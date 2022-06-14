@@ -1,8 +1,8 @@
 
 
 <!-- Load custom CSS/JS for code folding -->
-<link rel="stylesheet" type="text/css" href="../include/hideOutput.css">
-<script src="../include/hideOutput.js"></script>
+<link rel="stylesheet" type="text/css" href="../../include/hideOutput.css">
+<script src="../../include/hideOutput.js"></script>
 
 ***
 
@@ -20,9 +20,9 @@ source(here("rr_helpers.R"))
 message("Document index: ", doc_id)
 
 # Specify where to save outputs
-out        <- here("output", doc_id); dir.create(out, recursive = TRUE)
-figout     <- here("figures", doc_id); dir.create(figout, recursive = TRUE)
-cache      <- paste0("/lustre06/project/6004736/sjessa/cache/HGG-oncohistones/", basename(here()), "/", doc_id, "/")
+out        <- here("R-4/output", doc_id); dir.create(out, recursive = TRUE)
+figout     <- here("R-4/figures", doc_id); dir.create(figout, recursive = TRUE)
+cache      <- paste0("/lustre06/project/6004736/sjessa/cache/HGG-oncohistones/R-4.1.2/", basename(here()), "/", doc_id, "/")
 
 ```
 
@@ -56,7 +56,6 @@ knitr::knit_hooks$set( echo_fig = function(before, options, envir) {
     } else sprintf('<br><span style="color:#0d00ff">~[figure @ *%s*]~</span>',
                    paste0(
                        path_from_here(figout),
-                       "/",
                        options$label, "...") )
 })
 
@@ -98,16 +97,8 @@ grDevices::pdf.options(useDingbats = FALSE)
 # Expand the width for more plotting area
 knitr::opts_knit$set(width = 1600)
 
-# Initialize testing, disable summary b/c it interferes with the reproducibility footer
-testrmd::init(summary = FALSE)
-
-# Create a chunk template for BentoBox, where graphics
-#   are plot iteratively and we only want to keep the last figure
-# Same thing for testrmd, we want to test the chunks, but not show results,
-#   since when tests pass, the inputs are printed
-# https://bookdown.org/yihui/rmarkdown-cookbook/opts-template.html#opts-template
-knitr::opts_template$set(BentoBox = list(fig.keep = "last", message = FALSE),
-                         testrmd = list(test = TRUE, results = FALSE, cache = FALSE))
+# Create some chunk templates
+knitr::opts_template$set(BentoBox = list(fig.keep = "last", message = FALSE))
 
 ```
 

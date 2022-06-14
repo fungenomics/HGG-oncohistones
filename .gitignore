@@ -1,4 +1,13 @@
-# Default ----
+
+*DS_Store*
+
+# Ignore any test files
+test*
+
+# Ok to keep a copy of this, but don't need to 
+# record every update
+run_slurm.sh
+*/run_slurm.sh
 
 # History files
 .Rhistory
@@ -17,13 +26,46 @@ README.html
 # R Environment Variables
 .Renviron
 
-# Custom for rr ----
+# Custom
 
-# Exclude pdfs, which take up more space
+# Exclude scratch
+scratch
+*/scratch
+code/_*
+*/code/_*
+
+# Exclude IGV sessions
+IGV
+*/IGV
+
+# Exclude data
+data
+*/data
+*/*/data
+
+# Exclude logs
+logs
+
+# Exclude figures, which take up more space
+*.pdf
+*.png
+figures
 figures/*/*.pdf
 */figures/*/*.pdf
 
-# Exclude .Rda files
-output/*/*.Rda
-*/output/*/*.Rda
+# Exclude source data
+figures/*/*.source_data.tsv
+*/figures/*/*.source_data.tsv
+
+# Exclude output
+output
+*/output
+
+.Rprofile
+.Rhistory
+*.Rproj
 .Rproj.user
+
+# Exclude rendered HTML files
+code/*.html
+*/code/*.html

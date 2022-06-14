@@ -37,6 +37,14 @@ if ("devtools" %in% installed.packages()) {
 
 </details>
 
+The resources requested when this document was last rendered:
+
+```{r resources, echo = FALSE, cache = FALSE}
+
+cat(params$resources)
+
+```
+
 
 ***
 
