@@ -1,0 +1,21 @@
+/* Code folding via https://stackoverflow.com/questions/37755037/how-to-add-code-folding-to-output-chunks-in-rmarkdown-html-documents/37839683#37839683 */
+.showopt {
+  background-color: #0d00ff;
+  color: #FFFFFF; 
+  width: 100px;
+  height: 20px;
+  text-align: center;
+  vertical-align: middle !important;
+  float: right;
+  font-family: sans-serif;
+  border-radius: 8px;
+}
+
+.showopt:hover {
+    background-color: #dfe4f2;
+    color: #0d00ff;
+}
+
+pre.plot {
+  background-color: white !important;
+}

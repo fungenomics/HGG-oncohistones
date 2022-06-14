@@ -1,0 +1,42 @@
+
+
+***
+
+<!-- Create reproducibility receipt e.g. https://github.com/benmarwick/rrtools/blob/master/inst/templates/paper.Rmd -->
+
+# Reproducibility
+
+This document was last rendered on:
+
+```{r time, echo = FALSE, cache = FALSE}
+
+message(Sys.time())
+
+```
+
+The git repository and last commit:
+
+```{r repo, echo = FALSE, cache = FALSE}
+
+git2r::repository()
+
+```
+
+The random seed was set with `set.seed(100)`
+
+The R session info:
+<details>
+
+```{r sinfo, cache = FALSE, echo = FALSE}
+
+if ("devtools" %in% installed.packages()) {
+    devtools::session_info()
+} else sessionInfo()
+
+```
+
+</details>
+
+
+***
+

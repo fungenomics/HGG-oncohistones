@@ -1,0 +1,29 @@
+# Default ----
+
+# History files
+.Rhistory
+.Rapp.history
+
+# Session Data files
+.RData
+
+# User-specific files
+.Ruserdata
+
+# RStudio files
+.Rproj.user/
+README.html
+
+# R Environment Variables
+.Renviron
+
+# Custom for rr ----
+
+# Exclude pdfs, which take up more space
+figures/*/*.pdf
+*/figures/*/*.pdf
+
+# Exclude .Rda files
+output/*/*.Rda
+*/output/*/*.Rda
+.Rproj.user

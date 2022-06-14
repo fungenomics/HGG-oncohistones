@@ -1,0 +1,111 @@
+
+
+<!-- Load custom CSS/JS for code folding -->
+<link rel="stylesheet" type="text/css" href="../include/hideOutput.css">
+<script src="../include/hideOutput.js"></script>
+
+***
+
+# Configuration
+
+Configuration of project directory & analysis outputs:
+
+<details><summary>Show full config</summary>
+
+```{r config, warning = FALSE}
+
+source(here("rr_helpers.R"))
+
+# Set up outputs
+message("Document index: ", doc_id)
+
+# Specify where to save outputs
+out        <- here("output", doc_id); dir.create(out, recursive = TRUE)
+figout     <- here("figures", doc_id, "/")
+cache      <- paste0("~/tmp/", basename(here()), "/", doc_id, "/")
+
+```
+
+</details>
+
+The root directory of this project is:
+
+```{r here, echo = FALSE, cache = FALSE}
+
+message(here())
+
+```
+
+Outputs and figures will be saved at these paths, relative to project root:
+
+```{r print_out_paths, echo = FALSE, cache = FALSE}
+
+message(path_from_here(out))
+message(path_from_here(figout))
+
+```
+
+```{r setup, include = FALSE}
+
+# Code to print the location of output / figures, relative to the root
+# Usage: set "echo_fig = TRUE" or "echo_out = TRUE" in knitr chunk options
+# via https://gist.github.com/Thell/5827832
+knitr::knit_hooks$set( echo_fig = function(before, options, envir) {
+    if ( before ) {
+        # Do nothing
+    } else sprintf('<br><span style="color:#0d00ff">~[figure @ *%s*]~</span>',
+                   paste0(
+                       path_from_here(figout),
+                       options$label, "...") )
+})
+
+knitr::knit_hooks$set( echo_out = function(before, options, envir) {
+    if ( before ) {
+        # Do nothing
+    } else sprintf('<br><span style="color:#0d00ff">~[output @ *%s*]~</span>',
+                   paste0(path_from_here(out),
+                          "/",
+                          options$label) )
+})
+
+# Set knitr options
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      fig.path = figout,
+                      # In general, keep all the figures produced in a chunk
+                      fig.keep = "all",
+                      # Display PNG but also keep PDF, must be provided in this
+                      # order for HTML outputs
+                      dev = c("png", "pdf"),
+                      # Cache chunk results and use cache if the chunk hasn't
+                      # been changed since last rendering
+                      cache = TRUE,
+                      cache.path = cache,
+                      # Do not use lazy loading which fails for large objects
+                      cache.lazy = FALSE,
+                      # Cache the random seed; when modified, re-evaluate chunks
+                      # https://yihui.org/knitr/demo/cache/#reproducibility-with-rng
+                      cache.extra = knitr::rand_seed)
+
+options(knitr.table.format = "html") 
+
+# Don't use Dingbats in PDF figures, which is important
+# for being able to edit files in Illustrator
+grDevices::pdf.options(useDingbats = FALSE)
+
+# Expand the width for more plotting area
+knitr::opts_knit$set(width = 1600)
+
+```
+
+Setting a random seed:
+
+```{r seed, cache = TRUE}
+
+set.seed(100)
+
+```
+
+***
+
