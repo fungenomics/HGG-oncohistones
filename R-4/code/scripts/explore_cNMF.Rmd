@@ -1,0 +1,145 @@
+---
+title: "Explore cNMF output"
+author: "Selin Jessa"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    theme: flatly
+    toc: yes
+    toc_depth: 4
+    number_sections: true
+    df_print: paged
+params:
+  output: output_ngenes2000_niter100_malignant
+  suffix: malignant
+---
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = paste0(knitr::opts_knit$get("root.dir"), "/", params$output, "/"),
+                      dev = "png",
+                      fig.keep = "all",
+                      cache.lazy = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+```
+
+# Purpose
+
+This script should be run after the main cnMF routines.
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(here)
+library(tidyr)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(purrr)
+library(glue)
+library(Seurat)
+library(Signac)
+library(cowplot)
+library(DT)
+
+source(here("include/style.R"))
+source(here("code/functions/scRNAseq.R"))
+
+here::here()
+
+```
+
+# Load data
+
+```{r load_seurat}
+
+load("../seurat.Rda")
+
+```
+
+# Gene expression program usages
+
+```{r load_usages}
+
+usage_file <- list.files(params$output, pattern = glob2rx(glue("{params$output}.usages.k_*.dt_0_02.consensus.txt")), full.names = TRUE)
+
+usages <- read_tsv(usage_file) %>%
+  tibble::column_to_rownames(var = "X1")
+
+norm <- function(x) {
+  
+  x / sum(x)
+  
+}
+
+usages_norm <- t(apply(usages, 1, norm))
+sfx <- ifelse(params$suffix == "default", "", paste0(params$suffix, "_"))
+colnames(usages_norm) <- paste0("cNMF_program_", sfx, colnames(usages_norm))
+
+```
+
+Add to Seurat object and plot the usages on the low-dimensional embeddings:
+
+```{r plot_usages, fig.width = 14, fig.height = 12}
+
+seurat <- AddMetaData(seurat, metadata = usages_norm, col.name = colnames(usages_norm))
+
+map(colnames(usages_norm),
+    ~ umap(seurat, .x, color_by_type = "continuous", colors = viridis::viridis(100), point_size = 0.5, label = FALSE)) %>% 
+    {plot_grid(plotlist = .)}
+
+```
+
+# Gene expression program gene scores
+
+```{r load_gene_scores}
+
+gene_score_file <- list.files(params$output, pattern = glob2rx(glue("{params$output}.gene_spectra_score.k_*.dt_0_02.txt")),
+                              full.names = TRUE)
+
+# this is a program x gene table, so we transpose
+gene_scores <- read_tsv(gene_score_file) %>% tibble::column_to_rownames(var = "X1") %>% t()
+
+# get top 40 genes per GEP
+top_genes <- map_dfr(seq_along(colnames(gene_scores)), ~ gene_scores[, .x] %>%
+                       sort(decreasing = TRUE) %>%
+                       head(40) %>%
+                       names() %>% 
+                       glue_collapse(", ") %>% 
+                       {data.frame(Program = .x, Genes = .)})
+
+DT::datatable(top_genes) %>% formatStyle("Genes", "white-space" = "nowrap")
+
+# add to Seurat object
+seurat@misc[["cNMF"]] <- list()
+seurat@misc$cNMF[[params$output]] <- top_genes
+
+```
+
+
+# Save seurat
+
+```{r save, eval = FALSE}
+
+save(seurat, file = "../seurat.Rda")
+
+```
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+git2r::last_commit()
+sessionInfo()
+
+```

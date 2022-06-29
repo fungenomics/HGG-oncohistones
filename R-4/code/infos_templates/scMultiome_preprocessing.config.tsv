@@ -1,0 +1,15 @@
+param	value	description
+sample	SAMPLE	string, name of sample, saved in Seurat object
+cellranger_dir	/path/to/SAMPLE/cellranger	string, name of directory of the cellranger run to use
+species	h_sapiens	string, allowed values are "h_sapiens", name of species used to identify mitochrondrial and ribosomal genes
+genome_info	data/scATACseq/references/hg19_genome_info.Rda	string, path to Rda file containing hg19 seqinfo and gene annotation
+promoter_coords	data/scATACseq/references/promoter_coordinates.Rda	string, path to Rda file containing gene promoter coordinates
+max_mito	5	numeric, max mitochondrial content
+min_cells	1	numeric, min # of cells in which a peak has to be detected
+min_peak_region_fragments	400	numeric, the min threshold will be the max of this and the mean minus 2SD
+max_nucleosome_signal	1.5	numeric, will override the default upper threshold of the mean plus 2SD
+rna_pcs_keep	30	numeric, number of PCs to keep for dimensionality reduction for scRNA data
+atac_pcs_keep	6	numeric, number of PCs to keep for dimensionality reduction for scATAC data;
+clustering_resolution	0.2	numeric, resolution to use for cell clustering
+seed	42	numeric, for reproducibility
+genes	OLIG2,AQP4,C1QC,VWF	string, separate 4 genes by commas, used for plotting feature plots and coverage plots

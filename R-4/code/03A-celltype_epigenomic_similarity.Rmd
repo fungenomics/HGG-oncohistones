@@ -1,0 +1,673 @@
+---
+title: "03A - Epigenomic similarity between tumors & COO"
+author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  resources: "NOT SPECIFIED"
+output:
+  html_document:
+    keep_md: yes
+    code_folding: show
+    theme: flatly
+    css: ../../include/style.css
+    toc: yes
+    toc_depth: 3
+    number_sections: true
+    df_print: paged
+    includes:
+      before_body: ../../include/header.html
+      after_body:  ../../include/footer.R4.html
+---
+
+<!-- FRONT MATTER, insert configuration info -->
+
+```{r header, echo = FALSE, results = 'asis', warning = FALSE}
+
+# Index of the document
+# ...determines name of the subfolder of `outputs` and `figures`
+doc_id <- "03A"
+
+suppressMessages(library(here))
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "header.R4.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF FRONT MATTER -->
+
+
+# Overview
+
+Here we'll examine the similarity between HGGs and PFAs to their respective
+cells-of-origin based on epigenomic data across genomic features.
+
+For this analysis, we obtained Paired-Tag data for different histone modifications
+and corresponding cell type specific epigenome prifles from [Zhu et al, Nature Methods, 2021](https://doi.org/10.1038/s41592-021-01060-3).
+
+# Libraries
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(here)
+
+# For genome analysis / references
+library(GenomicRanges)
+library(plotgardener)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library(org.Hs.eg.db)
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(org.Mm.eg.db)
+library(rtracklayer)
+
+# general purpose
+library(tidyr)
+library(dplyr)
+library(ggrepel)
+library(ggrastr)
+library(readr)
+library(glue)
+library(tibble)
+library(ggplot2)
+library(purrr)
+library(pheatmap)
+library(stringr)
+library(fgsea)
+library(icytobox)
+library(cowplot)
+
+source(here("include/style.R"))
+source(here("R-4/code/functions/plotgardener_helpers.R"))
+ggplot2::theme_set(theme_min())
+
+```
+
+# Load metadata
+
+Load the sample metadata for the project:
+
+
+```{r read_meta, cache = FALSE}
+
+meta      <- read_tsv(here("data/metadata/metadata_patient_samples_NGS.tsv"))
+
+```
+
+
+```{r read_meta2, cache = FALSE}
+
+meta_chip <- read_tsv(here("data/metadata/metadata_chip_all.tsv"))
+
+```
+
+
+# Load data
+
+Import ChromHMM state calls from Zhu et al using `rtracklayer::import())`:
+
+```{r 0_chromhmm}
+
+# OPC is cluster 15 and ependymal is cluster 22
+opc_chromhmm <- import(
+    here("data/Paired-Tag/Zhu_2021/ChromHMM/15_8_segments.bed"))
+epen_chromhmm <- import(
+    here("data/Paired-Tag/Zhu_2021/ChromHMM/22_8_segments.bed"))
+
+# subset to autosomes
+chrs_keep <- paste0("chr", 1:29)
+opc_chromhmm <- opc_chromhmm[seqnames(opc_chromhmm) %in% chrs_keep]
+epen_chromhmm <- epen_chromhmm[seqnames(epen_chromhmm) %in% chrs_keep]
+
+# load segment info
+read_tsv(here("data/Paired-Tag/Zhu_2021/ChromHMM/README_segment.txt"))
+
+```
+
+# Get cell-type specific genomic regions
+
+First, subset to active/inactive genomic regions for each cell type:
+
+```{r 1_active}
+
+active_states <- c("E1", "E2", "E3")
+inactive_states <- c("E7", "E8")
+
+opc_active   <- opc_chromhmm[(elementMetadata(opc_chromhmm)[, "name"] %in% active_states)]
+opc_inactive <- opc_chromhmm[(elementMetadata(opc_chromhmm)[, "name"] %in% inactive_states)]
+
+epen_active   <- epen_chromhmm[(elementMetadata(epen_chromhmm)[, "name"] %in% active_states)]
+epen_inactive <- epen_chromhmm[(elementMetadata(epen_chromhmm)[, "name"] %in% inactive_states)]
+
+```
+
+Next, look for overlaps between active regions in one cell type and inactive in the other,
+requiring 50% overlap
+
+```{r 2_active_specific}
+
+# regions active in OPC and inactive in epen
+hits <- findOverlaps(opc_active, epen_inactive)
+overlaps <- pintersect(opc_active[queryHits(hits)], epen_inactive[subjectHits(hits)])
+length(overlaps)
+percentOverlap <- width(overlaps) / width(opc_active[subjectHits(hits)])
+hits <- hits[percentOverlap > 0.1]
+opc_active_specific <- opc_active[queryHits(hits)]
+length(opc_active_specific)
+
+# regions active in epen and inactive in OPC
+hits <- findOverlaps(epen_active, opc_inactive)
+overlaps <- pintersect(epen_active[queryHits(hits)], opc_inactive[subjectHits(hits)])
+length(overlaps)
+percentOverlap <- width(overlaps) / width(epen_active[subjectHits(hits)])
+hits <- hits[percentOverlap > 0.1]
+epen_active_specific <- epen_active[queryHits(hits)]
+length(epen_active_specific)
+
+```
+
+That gives us 200-300 features which are specific to one cell type or another.
+The union over the two will be our genomic features:
+
+```{r 3_union}
+
+elementMetadata(opc_active_specific)$celltype <- "OPC"
+elementMetadata(epen_active_specific)$celltype <- "Ependymal"
+
+```
+
+Load BED file of mm10 genes, and look for overlaps:
+
+```{r 4_load_mm10_genes}
+
+mm10_genes_bed <- rtracklayer::import(here("data/ChIPseq/references/Ensembl.ensGene.mm10.collapsed.bed"))
+mm10_genes_bed <- mm10_genes_bed[seqnames(mm10_genes_bed) %in% chrs_keep]
+
+# add 5kb on either side
+start(mm10_genes_bed) <- start(mm10_genes_bed) - 2500
+# end(mm10_genes_bed)   <- end(mm10_genes_bed) + 5000
+
+# find nearest gene for each OPC element
+opc_nearest_genes_idx <- nearest(opc_active_specific, mm10_genes_bed)
+opc_nearest_genes <- mm10_genes_bed[opc_nearest_genes_idx]
+opc_nearest_genes_hg <- opc_nearest_genes$name %>% sapply(str_split, ":") %>% 
+    sapply(getElement, 2) %>% 
+    mm2hg() %>% 
+    unlist() %>%
+    unique()
+
+# how many?
+length(unique(opc_nearest_genes$name))
+
+# same thing for ependymal elements
+epen_nearest_genes_idx <- nearest(epen_active_specific, mm10_genes_bed)
+epen_nearest_genes <- mm10_genes_bed[epen_nearest_genes_idx]
+length(unique(epen_nearest_genes$name))
+epen_nearest_genes_hg <- epen_nearest_genes$name %>% sapply(str_split, ":") %>% 
+    sapply(getElement, 2) %>% 
+    mm2hg() %>% 
+    unlist() %>%
+    unique()
+
+
+# mm
+epen_nearest_genes_mm <- epen_nearest_genes$name %>% sapply(str_split, ":") %>%
+    sapply(getElement, 2) %>% unname() %>% unique()
+opc_nearest_genes_mm <- opc_nearest_genes$name %>% sapply(str_split, ":") %>%
+    sapply(getElement, 2) %>% unname() %>% unique()
+
+(common_mm <- base::intersect(opc_nearest_genes_mm, epen_nearest_genes_mm))
+
+opc_nearest_genes_mm <- base::setdiff(opc_nearest_genes_mm, common_mm)
+epen_nearest_genes_mm <- base::setdiff(epen_nearest_genes_mm, common_mm)
+
+# hg
+(common <- base::intersect(opc_nearest_genes_hg, epen_nearest_genes_hg))
+
+opc_nearest_genes_hg <- base::setdiff(opc_nearest_genes_hg, common)
+epen_nearest_genes_hg <- base::setdiff(epen_nearest_genes_hg, common)
+
+nearest_genes_hg_uniq <- c(opc_nearest_genes_hg,
+                           epen_nearest_genes_hg)
+
+length(nearest_genes_hg_uniq)
+
+# make a dataframe to annotate
+feature_anno <- bind_rows(
+    data.frame("Feature"   =  opc_nearest_genes_hg,
+               "Cell_type" = "OPC"),
+    data.frame("Feature"   =  epen_nearest_genes_hg,
+               "Cell_type" = "Ependymal"))
+
+# save
+save(opc_nearest_genes_mm, epen_nearest_genes_mm,
+     opc_nearest_genes_hg, epen_nearest_genes_hg, nearest_genes_hg_uniq,
+     feature_anno,
+     file = glue("{out}/cell_type_specific_features.Rda"))
+
+```
+
+Next, we need to obtain the corresponding human features, quantify H3K27ac/H3K27me3/scATAC
+there, and then see first if the information in these features is enough to separate
+tumor types.
+
+# Evaluate samples at cell-type features
+
+## Format inputs
+
+Loading the quantifications of ChIPseq for H3K27ac/me3 at gene promoters for tumors,
+we can use the cell-type specific genes as a reduced feature space, and perform PCA.
+
+```{r tumor_chip}
+
+data_chip_wide <- read_tsv(here("output/02/TABLE_promoter_H3K27ac_H3K27me3_per_sample.tsv"))
+
+# reformat promoter H3K27ac to a matrix
+promoter_mat <- data_chip_wide %>% 
+    select(-matches("Median|Z")) %>% 
+    select(gene_symbol, 7:ncol(.)) %>% 
+    filter(gene_symbol %in% nearest_genes_hg_uniq) %>% 
+    distinct(gene_symbol, .keep_all = TRUE) %>% 
+    tibble::column_to_rownames(var = "gene_symbol") %>% 
+    t()
+
+# sanity checks
+dim(promoter_mat)
+length(unique(rownames(promoter_mat)))
+nearest_genes_hg_uniq[!(nearest_genes_hg_uniq %in% data_chip_wide$gene_symbol)]
+
+feature_anno <- feature_anno %>% 
+    filter(Feature %in% colnames(promoter_mat))
+
+save(promoter_mat,
+     feature_anno,
+     file = glue("{out}/promoter_H3K27ac_H3K27me3_mat.Rda"))
+
+dim(feature_anno)
+
+```
+
+## H3K27ac @ cell-type features
+
+Next, we can verify that these features, which were selected
+by ChromHMM, do indeed correspond to high H3K27ac in the requisite cell type,
+and low in the other.
+
+Load quantifications of promoter H3K27ac in OPC and ependymal cells using deeptools:
+
+```{r load_deeptools}
+
+mm10_promoters <- rtracklayer::import(here("data/ChIPseq/references/Ensembl.ensGene.mm10.collapsed.promoter5kb.bounded.bed")) %>% 
+    as.data.frame()
+celltype_k27ac <- data.table::fread(here("R-4/output/03B/MBS_Ensembl.ensGene.mm10.collapsed.promoter5kb.tab"), data.table = FALSE)
+colnames(celltype_k27ac) <- c("chr", "start", "end", "OPC", "Ependymal")
+
+celltype_k27ac_anno <- celltype_k27ac %>% 
+    # don't join by start, because import does start+1
+    left_join(mm10_promoters, by = c("chr" = "seqnames", "end" = "end")) %>% 
+    separate(name, into = c("ENSID", "symbol"), sep = ":")
+
+```
+
+
+```{r opc_epen_k27ac_ranked_plot, fig.width = 10, fig.height = 5}
+
+celltype_k27ac_anno_df <- celltype_k27ac_anno %>%
+    filter(symbol %in% c(opc_nearest_genes_mm, epen_nearest_genes_mm)) %>% 
+    mutate(Feature_type = case_when(
+        symbol %in% opc_nearest_genes_mm ~ "OPC",
+        symbol %in% epen_nearest_genes_mm ~ "Ependymal"
+    )) %>% 
+    select(symbol, Feature_type, OPC, Ependymal) %>% 
+    distinct(symbol, .keep_all = TRUE)
+
+p1 <- celltype_k27ac_anno_df %>% 
+    arrange(OPC) %>% 
+    mutate(symbol = factor(symbol, levels = unique(.$symbol))) %>% 
+    ggplot(aes(x = symbol, y = OPC)) +
+    geom_point(stat = "identity", aes(colour = Feature_type), alpha = 0.5) +
+    geom_text_repel(data = celltype_k27ac_anno_df %>% top_n(30, OPC),
+                    aes(label = symbol, colour = Feature_type), size = 3, max.overlaps = 30) +
+    scale_colour_manual(values = palette_type) +
+    rotate_x() +
+    theme(axis.text.x = element_blank()) +
+    ylab("Promoter H3K27ac of all cell-type specific features in OPCs") +
+    no_legend()
+
+p2 <- celltype_k27ac_anno_df %>% 
+    arrange(Ependymal) %>% 
+    mutate(symbol = factor(symbol, levels = unique(.$symbol))) %>% 
+    ggplot(aes(x = symbol, y = Ependymal)) +
+    geom_point(stat = "identity", aes(colour = Feature_type), alpha = 0.5) +
+    geom_text_repel(data = celltype_k27ac_anno_df %>% top_n(30, Ependymal),
+                    aes(label = symbol, colour = Feature_type), size = 3, max.overlaps = 30) +
+    scale_colour_manual(values = palette_type) +
+    rotate_x() +
+    theme(axis.text.x = element_blank()) +
+    ylab("Promoter H3K27ac of all cell-type specific features in Ependymal cells") +
+    no_legend()
+
+plot_grid(p1, p2, nrow = 1)
+
+save(celltype_k27ac_anno_df, file = glue("{out}/celltype_k27ac_anno_df.Rda"))
+
+```
+
+This indicates that not _all_ the features we selected are activated by H3K27ac in the
+appropriate cell type. We can select the top 15 in each:
+
+```{r discrim_features_celltype_ranks}
+
+discrim_features_mm <- c(celltype_k27ac_anno_df %>% top_n(20, OPC) %>% pull(symbol),
+                         celltype_k27ac_anno_df %>% top_n(20, Ependymal) %>% pull(symbol))
+
+discrim_features_hg <- discrim_features_mm %>% mm2hg() %>% 
+    unlist() %>%
+    unique() %>% 
+    discard(. == "") %>% 
+    # make sure these features are present in tumors
+    keep(. %in% feature_anno$Feature)
+
+```
+
+
+## Tumors and cell lines (HGG and PFA)
+
+In this analysis, we'll include all HGG and PFA tumors and cell lines:
+
+```{r 1_samples}
+
+samples_1 <- meta_chip %>%
+    filter(Group %in% c("HGG-H3.1/2K27M-Pons",
+                        "HGG-H3.3K27M-Pons",
+                        "HGG-H3.3K27M-Thalamus",
+                        "PFA-EZHIP-PF",
+                        "PFA-H3.1K27M-PF") &
+               (Material == "Tumor" | CRISPR == "Parental") &
+               !grepl("Nagaraja", Source)) %>%
+    filter(Factor == "H3K27ac") %>% 
+    mutate(bw = gsub(".bw", "", basename(Path_bw))) %>% 
+    select(ID_paper, Group, bw) %>% 
+    filter(bw %in% rownames(promoter_mat))
+
+promoter_H3K27ac_mat_1 <- promoter_mat[samples_1$bw, ]
+dim(promoter_H3K27ac_mat_1)
+
+```
+
+
+
+Representing these as a heatmap:
+
+```{r 1_feature_heatmap}
+
+hm_fun <- purrr::partial(
+    pheatmap,
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    border_color = NA,
+    treeheight_row = 20,
+    treeheight_col = 20,
+    scale = "none",
+    show_rownames = TRUE,
+    show_colnames = TRUE,
+    annotation_col = samples_1 %>%
+        tibble::column_to_rownames(var = "bw") %>%
+        select(-ID_paper),
+    annotation_row = feature_anno %>% tibble::column_to_rownames(var = "Feature"),
+    annotation_colors = list("Group" = palette_groups,
+                             "Cell_type" = palette_type),
+    color = rdbu2,
+    breaks = seq(-6, 6, length.out = 101),
+    fontsize_row = 6,
+    cellwidth = 10,
+    cellheight = 6)
+
+```
+
+```{r 2_feature_heatmap, dependson = c('1_feature_heatmap', 'z_score_features')}
+
+# without H3.3K27Ms
+samples_2 <- samples_1 %>% filter(Group %in% c("HGG-H3.1/2K27M-Pons",
+                                               "PFA-EZHIP-PF",
+                                               "PFA-H3.1K27M-PF")) %>% 
+    filter(bw %in% rownames(promoter_mat))
+
+hm_fun(mat = t(log2(promoter_H3K27ac_mat_1)[samples_2$bw, discrim_features_hg]),
+       cutree_cols = 2,
+       filename = glue("{figout}/celltype_H3K27ac_discrim_heatmap2.png"),
+       title = "Cell-type features discriminative of H3.1K27M HGG vs EZHIP PFA")
+hm_fun(mat = t(log2(promoter_H3K27ac_mat_1)[samples_2$bw, discrim_features_hg]),
+       cutree_cols = 2,
+       filename = glue("{figout}/celltype_H3K27ac_discrim_heatmap2.pdf"),
+       title = "Cell-type features discriminative of H3.1K27M HGG vs EZHIP PFA")
+
+knitr::include_graphics(glue("{figout}/celltype_H3K27ac_discrim_heatmap2.png"))
+
+```
+
+
+
+# Visualization of chromatin state @ COO features
+
+## Mouse reference data
+
+First, set the features in the mm10 genome:
+
+```{r mm10_features}
+
+opc_epen_features_mm10 <- list(
+    GRanges("chr5",  37777685:37864531,   name = "Msx1"),
+    GRanges("chr9",  91336804:91408070,   name = "Zic1/4"),
+    GRanges("chr14", 122442135:122513576, name = "Zic2/5"),
+    GRanges("chr16", 91197862:91254035,   name = "Olig2"),
+    GRanges("chr2",  147137444:147241609, name = "Nkx2-2"),
+    GRanges("chr15", 79149288:79189457,   name = "Sox10"))
+
+params_mm <- map(opc_epen_features_mm10, ~ pgParams(chromstart = start(.x),
+                                                    chromend = end(.x),
+                                                    assembly = "mm10"))
+names(params_mm) <- map(opc_epen_features_mm10, ~ .x$name)
+
+```
+
+Build the config file row-wise:
+
+```{r mm10_config, fig.width = 4, fig.height = 3}
+
+mm10_config <- tribble(
+    ~Data,      ~ID,               ~Ymax,  ~bw,
+    "RNAseq",   "OPC scRNA",       151,    "data/Paired-Tag/Zhu_2021/bigwig/Paired-Tag_RNA_OPC.bw",
+    "H3K27ac",  "OPC scH3K27ac",   112,    "data/Paired-Tag/Zhu_2021/bigwig/Paired-Tag_H3K27ac_OPC.bw",
+    "H3K27me3", "OPC H3K27me3",    70,     "data/ChIPseq/references/Bartosovic_2021/Bulk/GSM4980053_P13556_1026_dedup.bw",
+    "RNAseq",   "Epen. scRNA",     151,    "data/Paired-Tag/Zhu_2021/bigwig/Paired-Tag_RNA_Ependymal.bw",
+    "H3K27ac",  "Epen. scH3K27ac", 112,    "data/Paired-Tag/Zhu_2021/bigwig/Paired-Tag_H3K27ac_Ependymal.bw"
+) %>% 
+    mutate(bw = here(bw))
+
+# sanity check
+all(file.exists(mm10_config$bw))
+
+# import chromHMM
+chromhmm_epen <- rtracklayer::import(here("data/Paired-Tag/Zhu_2021/ChromHMM/cluster22_dense.bed"))
+chromhmm_opc  <- rtracklayer::import(here("data/Paired-Tag/Zhu_2021/ChromHMM/cluster15_dense.bed"))
+(palette_chromhmm <- as.data.frame(chromhmm_opc) %>% select(name, itemRgb) %>% distinct() %>% deframe())
+
+```
+
+Construct the figure:
+
+```{r mm10_tracks, fig.width = 11.5, fig.height = 4, opts.label = 'BentoBox', echo_fig = TRUE, dependson = c('mm10_config', 'mm10_features')}
+
+x_positions <- seq(0.5, 9, by = 1.25) + 1.5
+y_positions <- seq(0.5, by = 0.4, length.out = nrow(mm10_config))
+width <- 1
+
+pageCreate(width = 11.5, height = 4, default.units = "inches")
+
+# in this loop, for each region, we will
+# 1. plot OPC bw
+# 2. plot OPC ChromHMM
+# 3. plot Epen. bw
+# 4. plot Epen ChromHMM
+# 5. plot genome labels
+for (i in seq_along(params_mm)) {
+    
+    x_i <- x_positions[i]
+    params_i <- params_mm[[i]]
+    chrom <- as.character(seqnames(opc_epen_features_mm10[[i]]))
+    # for the RNA & H3K27me3 bw files, chromsome names don't have the "chr" prefix...
+    chroms_i <- unlist(map(mm10_config$Data,
+                           ~ ifelse(.x %in% c("RNAseq", "H3K27me3"),
+                                    as.numeric(stringr::str_extract(chrom, "[0-9]+")),
+                                    chrom)))
+    
+    pwalk(list(mm10_config$bw[1:3], mm10_config$Data[1:3], mm10_config$Ymax[1:3], y_positions[1:3], chroms_i[1:3]),
+          ~ pg_placeSignalAndLabel(data = ..1,
+                                   color = palette_tracks[..2],
+                                   range = c(0, ..3),
+                                   y = ..4,
+                                   x = x_i,
+                                   chr = ..5,
+                                   params = params_i,
+                                   width = width,
+                                   height = 0.35))
+    
+    plotRanges(chromhmm_opc, fill = chromhmm_opc$itemRgb, params = params_i, chrom = chrom, collapse = TRUE,
+               x = x_i, y = "0.05b", height = 0.1, width = width)
+    
+    pwalk(list(mm10_config$bw[4:5], mm10_config$Data[4:5], mm10_config$Ymax[4:5], y_positions[4:5], chroms_i[4:5]),
+          ~ pg_placeSignalAndLabel(data = ..1,
+                                   color = palette_tracks[..2],
+                                   range = c(0, ..3),
+                                   y = ..4 + 0.3, # add a bit to account for chromHMM track
+                                   x = x_i,
+                                   chr = ..5,
+                                   params = params_i,
+                                   width = width,
+                                   height = 0.35))
+    
+    plotRanges(chromhmm_epen, fill = chromhmm_epen$itemRgb, params = params_i, chrom = chrom, collapse = TRUE,
+               x = x_i, y = "0.05b", height = 0.1, width = width)
+    
+    # place 0.1in below last plot
+    plotGenomeLabel(params = params_i, chrom = chrom, scale = "Kb", x = x_i, y = "0.1b", length = width, fontsize = 8)
+    
+    plotGenes(params = params_i, chrom = chrom, x = x_i, y = "0.25b", height = 0.5, width = width,
+              fontcolor = c("navy", "black"), fill = c("navy", "black"),
+              stroke = 0.05,
+              just = c("left", "top"), default.units = "inches")
+    
+}
+
+# add data labels at left
+pmap(list(c(mm10_config$ID[1:3], "OPC ChromHMM", mm10_config$ID[4:5], "Epen. ChromHMM"),
+          c(y_positions[1:3], 1.5, y_positions[4:5] + 0.3, 2.7)),
+     ~ plotText(label = ..1, fonsize = 3, fontcolor = "black",
+                x = 0.2, y = ..2 + 0.2, just = c("left", "top"), default.units = "inches"))
+
+pageGuideHide()
+
+```
+
+## Human tumors / cell lines
+
+Define the regions in the human genome:
+
+```{r hg_features}
+
+opc_epen_features_hg19 <- list(
+    GRanges("chr4",  4836193:4890861,     name = "MSX1"),
+    GRanges("chr3",  147066046:147179311, name = "ZIC1/4"),
+    GRanges("chr13", 100595157:100661032, name = "ZIC2/5"),
+    GRanges("chr21", 34372339:34427397,   name = "OLIG2"),
+    GRanges("chr20", 21475155:21511204,   name = "NKX2-2"),
+    GRanges("chr22", 38344095:38403785,   name = "SOX10"))
+
+params_hg <- map(opc_epen_features_hg19, ~ pgParams(
+    chrom = as.character(seqnames(.x)),
+    chromstart = start(.x),
+    chromend = end(.x),
+    assembly = "hg19"))
+names(params_hg) <- map(opc_epen_features_hg19, ~ .x$name)
+
+```
+
+
+Define the input samples:
+
+```{r hg_config}
+
+hg19_config <- meta_chip %>%
+    filter(Group %in% c("HGG-H3.1/2K27M-Pons", "PFA-EZHIP-PF", "PFA-H3.1K27M-PF") &
+               Factor == "H3K27ac" &
+               grepl("Cell-of-origin", Analyses) &
+               Material == "Tumor") %>%
+    arrange(Group) %>%
+    distinct(ID_paper, .keep_all = TRUE) %>% 
+    select(Data = Factor, ID_paper, Group, bw = Path_bw_internal) %>% 
+    mutate(Ymax = case_when(
+        Group == "HGG-H3.1/2K27M-Pons" ~ 10,
+        grepl("PFA", Group) ~ 25))
+
+# sanity check
+all(file.exists(hg19_config$bw))
+
+```
+
+Construct the figure:
+
+```{r hg19_tracks, fig.width = 11.5, fig.height = 6.5, opts.label = 'BentoBox', echo_fig = TRUE, dependson = c('hg_config', 'hg_features')}
+
+x_positions <- seq(0.5, 9, by = 1.25) + 1.5
+y_positions <- seq(0.5, by = 0.25, length.out = nrow(hg19_config))
+width <- 1
+
+pageCreate(width = 11.5, height = 6.5, default.units = "inches")
+
+for (i in seq_along(params_hg)) {
+    
+    x_i <- x_positions[i]
+    params_i <- params_hg[[i]]
+    
+    pwalk(list(hg19_config$bw, hg19_config$Group, hg19_config$Ymax, y_positions),
+          ~ pg_placeSignalAndLabel2(data = ..1,
+                                    color = palette_groups[..2],
+                                    range = c(0, ..3),
+                                    y = ..4,
+                                    x = x_i,
+                                    params = params_i,
+                                    width = width,
+                                    height = 0.2))
+    
+    plotGenomeLabel(params = params_i, scale = "Kb", x = x_i, y = "0.1b", length = width, fontsize = 8)
+    
+    plotGenes(params = params_i, x = x_i, y = "0.25b", height = 0.75, width = width,
+              fontcolor = c("navy", "black"), fill = c("navy", "black"),
+              stroke = 0.05,
+              just = c("left", "top"), default.units = "inches")
+    
+}
+
+# add data labels at left
+pmap(list(hg19_config$ID, y_positions),
+     ~ plotText(label = ..1, fonsize = 3, fontcolor = "black",
+                x = 0.2, y = ..2 + 0.1, just = c("left", "top"), default.units = "inches"))
+
+pageGuideHide()
+
+```
+
+
+
+<!-- END MATTER, insert reproducibility info -->
+
+```{r footer, echo = FALSE, results = 'asis', warning = FALSE, cache = FALSE}
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "footer.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF END MATTER -->

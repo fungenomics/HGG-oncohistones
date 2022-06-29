@@ -1,0 +1,1389 @@
+---
+title: "01 - cNMF"
+author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  resources: "NOT SPECIFIED"
+output:
+  html_document:
+    keep_md: yes
+    code_folding: show
+    theme: flatly
+    css: ../../include/style.css
+    toc: yes
+    toc_depth: 3
+    number_sections: true
+    df_print: paged
+    includes:
+      before_body: ../../include/header.html
+      after_body:  ../../include/footer.R4.html
+---
+
+<!-- FRONT MATTER, insert configuration info -->
+
+```{r header, echo = FALSE, results = 'asis', warning = FALSE}
+
+# Index of the document
+# ...determines name of the subfolder of `outputs` and `figures`
+doc_id <- "01"
+
+suppressMessages(library(here))
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "header.R4.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF FRONT MATTER -->
+
+
+# Overview
+
+This document focuses on analysis of cell-type identity across samples,
+primarily using scRNAseq data. The main analyses are consensus non-negative
+matrix factorization (cNMF) to extract & annotate gene programs in an unbiased
+manner, and visualization and quantification of cell-type projections, as shown
+in Figure 1.
+
+# Libraries
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# Load libraries here
+library(biomaRt)
+library(here)
+library(tidyr)
+library(dplyr)
+library(ggrepel)
+library(readr)
+library(glue)
+library(tibble)
+library(ggplot2)
+library(purrr)
+library(pheatmap)
+library(ape)
+library(dendextend)
+library(ggrastr)
+library(cowplot)
+library(Seurat)
+
+source(here("include/style.R")) # contains palettes & plotting utils
+source(here("code/functions/scRNAseq.R"))
+ggplot2::theme_set(theme_min())
+
+```
+
+# Load metadata
+
+Load the sample metadata for the project:
+
+
+```{r read_meta, cache = FALSE}
+
+meta      <- read_tsv(here("data/metadata/metadata_patient_samples_NGS.tsv"))
+
+```
+
+Single-cell metadata:
+
+```{r meta2, cache = FALSE}
+
+meta_sc <- data.table::fread(here("data/metadata/metadata_sc.tsv"), data.table = FALSE)
+
+```
+
+
+# cNMF
+
+To identify recurrent sources of intratumor variability in gene expression in an unsupervised manner,
+we performed non-negative matrix factorization using the [consensus NMF (cNMF)](https://github.com/dylkot/cNMF)
+method described in [Kotliar et al, eLife, 2019](https://elifesciences.org/articles/43803).
+
+The main steps are:
+
+1. Run cNMF to identify gene programs which demonstrate intra-tumor variability
+within each sample
+2. Extract the top genes associated with each program
+3. Identify sets of similar programs across samples. These sets are referred to as "modules" in the paper, but "metaprograms" in the code.
+4. Annotate programs based on overlap with other gene sets
+5. Extract gene signatures for each metaprogram
+ 
+
+## Running cNMF
+
+Briefly, for each value of _k_, the number of components, this method runs 100 iterations of
+NMF with different random seeds, clusters the components resulting from each replicate,
+filters outlier components, and takes the median of each cluster of components as a
+consensus estimate for that component. cNMF is applied to raw UMI counts for malignant 
+cells and run with values of _k_ from 5-9. For each value of _k_, the Silhouette score,
+measuring the stability of the components, and the Frobenius error are computed,
+and the _k_ maximizing the Silhouette score and minimizing the Frobenius error was
+selected for each sample. Outlier components are filtered by retaining only
+components with mean distance to most similar components of 0.02 (`density_threshold = 0.02`),
+resulting in a program activity matrix (the activity of each program in each cell), and
+a gene scores matrix (reflecting the expected increase in transcripts per million of a
+given gene for a unit increase of a given program), which is z-scored across genes.
+
+cNMF is run for each individual sample on malignant cells only. This is performed in the
+scRNA pipeline and scMultiome pipelines at `data/scRNAseq/pipeline_10X/<sample>/cNMF`
+and `R-4/data/scMultiome/pipeline_10X_Multiome/<sample>/cNMF`. This does three steps:
+
+1. Extract counts matrix, normalize and factorize the matrix, and combine
+results from different iterations. Example script at `code/scripts/run_cNMF.sh`.
+2. Select k (# of components) by maximizing stability and minimizing error, inspecting
+the file `output_ngenes2000_niter100_malignant.k_selection.png` in the cNMF output folder.
+This is done interactively (commands are described in the code at the bottom of the `code/scripts/run_cNMF.sh`
+script)/
+3. Add cNMF scores to Seurat object. Example script at `code/scripts/explore_cNMF.Rmd`.
+
+Since cNMF has been run for each sample within the pipeline, this document and
+the following sections mainly load the cNMF output and aggregate these to identify
+and visualize recurrent sources of gene expression variation across tumors.
+
+## Program/QC correlations
+
+Here, we calcuate the correlation between the usage score for each program in each cell,
+and QC metrics in each cell.
+
+We loop over Seurat objects and save only the dataframe containing QC/cNMF program correlations:
+
+```{r compute_cnmf_qc_cor, message = FALSE}
+
+# paths to pipelines
+rna_samples <- c(list.files(here("data/scRNAseq/pipeline_10X/"), full.names = TRUE))
+rna_samples <- rna_samples[!grepl("Makefile", rna_samples)]
+
+multi_samples <- list.files(here("R-4/data/scMultiome/pipeline_10X_Multiome/"), full.names = TRUE)
+# exclude scMultiome samples that have already been profiled by scRNAseq to avoid
+# breaking assumptions about independence of samples
+multi_samples <- multi_samples[!grepl("Makefile|P-6253_S-8498|P-6640_S-9581|P-1764_S-1766|P-6337_S-8821|P-1709_S-1709", multi_samples)]
+
+# combine
+sc_samples <- c(rna_samples, multi_samples)
+
+# SLOW, since it requires loading each Seurat object individually
+get_qc_cnmf_correlations <- function(program_string, malignant_only) {
+    
+    purrr::map_dfr(sc_samples, function(i) {
+        
+        message("@ ", basename(i))
+        
+        id <- basename(i)
+        load(glue("{i}/seurat.Rda"))
+        
+        # qc_cols will be the same across samples, cnmf_cols will vary with the selcted K
+        qc_cols <- c("nCount_RNA", "nFeature_RNA", "percent.mito", "percent.ribo")
+        cc_cols <- c("S.Score", "G2M.Score")
+        cnmf_cols <- colnames(seurat@meta.data)[grepl(program_string, colnames(seurat@meta.data))]
+        
+        if (malignant_only) cells_keep <- seurat@meta.data$Malignant_normal_consensus == "Malignant"
+        else cells_keep <- colnames(seurat)
+        
+        cor_df <- cor(seurat@meta.data[cells_keep, c(cc_cols, qc_cols)], seurat@meta.data[cells_keep, cnmf_cols]) %>%
+            t() %>% 
+            as.data.frame() %>% 
+            tibble::rownames_to_column(var = "Program") %>% 
+            tibble::add_column(.before = 1, "Sample" = id) %>% 
+            mutate(Program = paste0(Sample, "_", Program))
+        
+        rm(seurat)
+        
+        return(cor_df)
+        
+    })
+    
+}
+
+# save correlations
+qc_cnmf_correlations <- get_qc_cnmf_correlations("cNMF_program_malignant", malignant_only = TRUE)
+length(unique(qc_cnmf_correlations$Sample))
+rr_write_tsv(qc_cnmf_correlations,
+             glue("{out}/QC_cNMF_correlations.malignant.tsv"),
+             "Table with correlation between cNMF programs (from malignant cells) and QC metrics across single cells, for all 10X samples (including Multiome).")
+
+```
+
+
+
+## Extract top genes
+
+We next extract, for each sample, the top genes associated with each program.
+
+The output we have from cNMF includes:
+
+- Usage score of each program in each cell
+- Contribution of each gene to each program (both TPM and the Z-scored GEPs
+"which reflect how enriched a gene is in each GEP relative to all of the others")
+
+The data that's comparable across sample in the contribution of each gene to each program.
+For simplicity and to avoid loading all that data, I'll take the top 100 genes
+per program and cluster programs based on overlap between those (this method follows
+the NMF analysis performed in [Kinker et al,
+Nature Genetics, 2020](https://www.nature.com/articles/s41588-020-00726-6)),
+thanks to their code provided on [GitHub](https://github.com/gabrielakinker/CCLE_heterogeneity).
+
+
+```{r get_top_genes, message = FALSE}
+
+get_cnmf_top_genes <- function(output_dir, program_string) {
+    
+    top_genes <- map(sc_samples, function(i) {
+        
+        message("@ ", basename(i))
+        
+        id <- basename(i)
+        
+         # load gene scores file from per-sample cNMF output
+        gene_score_file <- list.files(glue("{i}/cNMF/{output_dir}/"),
+                                      pattern = glob2rx(paste0(output_dir, ".gene_spectra_score.k_*.dt_0_02.txt")),
+                                      full.names = TRUE)
+        
+        # this is a program x gene table, so we transpose
+        gene_scores <- data.table::fread(gene_score_file, data.table = FALSE, sep = "\t", header = TRUE) %>%
+            tibble::column_to_rownames(var = "V1") %>% t()
+        
+        # for each program:
+        #    sort genes by scores, and take the top 100
+        top_genes <- map(seq_along(colnames(gene_scores)), ~ gene_scores[, .x] %>%
+                             sort(decreasing = TRUE) %>%
+                             head(100) %>%
+                             names())
+        
+        names(top_genes) <- paste0(id, program_string, 1:ncol(gene_scores))
+        
+        rm(gene_scores)
+        
+        return(top_genes)
+        
+    })
+    
+    flatten(top_genes)
+    
+}
+
+cnmf_top_genes <- get_cnmf_top_genes("output_ngenes2000_niter100_malignant", "_cNMF_program_malignant_")
+length(cnmf_top_genes)
+saveRDS(cnmf_top_genes, file = glue("{out}/cNMF_top_genes.malignant.Rds"))
+
+```
+
+
+
+## Make similarity matrix
+
+Next, we look for sets of similar programs, which we could then define as recurrent
+across samples. We compute the pairwise overlap (i.e., # of genes in common)
+between programs to make a similarity matrix.
+
+This is based on [code from Kinker et al](https://github.com/gabrielakinker/CCLE_heterogeneity/blob/3c40f5fbd4b84a81094fb6caae255785506d3645/module2_rhp.R), calculating "recurrent heterogeneous
+programs".
+
+
+```{r compute_program_similarity_malig}
+
+# similarity matrix: pairwise overlap between programs
+cnmf_intersect <- sapply(cnmf_top_genes, function(x) sapply(cnmf_top_genes, function(y) length(intersect(x, y)))) 
+dim(cnmf_intersect)  
+saveRDS(cnmf_intersect, file = glue("{out}/cNMF_intersect.malignant.Rds"))
+
+```
+
+
+## Filter rare/noisy programs
+
+cNMF can be quite sensitive, picking up programs that are highly specific to a few
+cells. To focus on programs used in the main populations of cells, we can take
+advantage of the normalized program usages for each cell.
+
+For each cell, the usages of all the programs identified by cNMF sums to 1,
+so for each cell in each sample, we can calculate which program it uses most highly.
+Then each program will be associated with a proportion of cells in the sample in which
+that program is the most highly used.
+
+```{r get_relative_usages, message = FALSE}
+
+# SLOW, since it requires loading each Seurat object individually
+calc_relative_usages <- function(program_string) {
+    
+    purrr::map_dfr(sc_samples, function(i) {
+        
+        message("@ ", basename(i))
+        
+        id <- basename(i)
+        load(glue("{i}/seurat.Rda"))
+        
+        get_malig_cells <- function(seurat) colnames(seurat)[seurat$Malignant_normal_consensus %in%
+                                                                 c("Malignant", "Likely malignant")]
+        
+        malig_cells <- get_malig_cells(seurat)
+        cnmf_malig_cols <- colnames(seurat@meta.data)[grepl(program_string, colnames(seurat@meta.data))]
+        
+        # for each program, calculate the proportion of cells where that
+        # program is used most highly
+        props <- map_dbl(seq_along(cnmf_malig_cols),
+                         ~ sum(apply(seurat@meta.data[malig_cells, cnmf_malig_cols], 1, which.max) == .x) /
+                             length(malig_cells))
+        
+        data.frame(Sample  = id,
+                   Program = cnmf_malig_cols,
+                   Prop    = props) %>%
+            mutate(Program = paste0(Sample, "_", Program))
+        
+    })
+}
+
+cnmf_program_usages <- calc_relative_usages(program_string = "cNMF_program_malignant")
+saveRDS(cnmf_program_usages, file = glue("{out}/cNMF_program_usages.Rds"))
+
+```
+
+Plot the usages of each program:
+
+```{r cnmf_usages, fig.width = 6, fig.height = 2}
+
+cnmf_program_usages %>%
+    # mutate(Program = factor(Program, levels = hm_programs)) %>% 
+    arrange(Program) %>% 
+    ggplot(aes(x = Program, y = Prop)) +
+    geom_bar(alpha = 0.7, stat = "identity", colour = "gray70") +
+    geom_hline(yintercept = 0.05, colour = "red", alpha = 0.7) +
+    scale_colour_gradientn(colours = ylrd) +
+    theme_min() +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    no_legend()
+
+```
+
+
+## Create heatmap
+
+Next, we can perform hierarchical clustering over programs on the similarity matrix,
+and visualize the resulting heatmap. Hierarchical clustering is performed
+using `pheatmap::pheatmap()` default parameters, i.e. Euclidean distance and 
+complete linkage.
+
+Helper function:
+
+```{r anno_helper}
+
+# make the column annotation for the gene programs, related to the covariates
+# of each sample
+program_anno <- qc_cnmf_correlations %>% 
+    left_join(meta_sc, by = "Sample") %>% 
+    select(Program, Sample, PRC2_group, Location) %>% 
+    tibble::column_to_rownames(var = "Program")
+
+generate_cnmf_heatmap <- purrr::partial(pheatmap,
+                                        border_color = NA,
+                                        show_rownames = FALSE,
+                                        show_colnames = TRUE,
+                                        color = custom_magma,
+                                        annotation_col = program_anno %>%
+                                            select(PRC2_group, Location),
+                                        # annotate columns of the heatmap based on the tumor
+                                        # that each program comes from
+                                        annotation_colors = list(
+                                            "PRC2_group" = palette_molecular,
+                                            "Location"   = palette_location
+                                        ),
+                                        treehight_col = 0,
+                                        fontsize_col = 3,
+                                        cellwidth = 2,
+                                        cellheight = 2)
+
+```
+
+Filter programs to those that are used most highly in >= 5% of cells,
+and then generate the heatmap.
+
+```{r cnmf_heatmap_filt}
+
+# filter
+programs_keep <- cnmf_program_usages %>% filter(Prop >= 0.05) %>% pull(Program)
+cnmf_intersect_filt <- cnmf_intersect[programs_keep, programs_keep]
+dim(cnmf_intersect_filt)
+
+saveRDS(cnmf_intersect_filt, file = glue("{out}/cNMF_intersect.malignant_filt.Rds"))
+
+# make heatmap
+# save the heatmap output which also contains the hiearchical clustering dendrogram
+cnmf_hm_filt <- generate_cnmf_heatmap(mat = cnmf_intersect_filt, silent = TRUE)
+hm_programs_filt <- cnmf_hm_filt$tree_col$labels[cnmf_hm_filt$tree_col$order]
+saveRDS(cnmf_hm_filt, file = glue("{out}/cNMF_heatmap.malignant_filt.Rds"))
+
+# save both file types
+generate_cnmf_heatmap(mat = cnmf_intersect_filt,
+                      main = "All samples",
+                      filename = glue("{figout}/cNMF_heatmap.malignant_filt.png"))
+
+generate_cnmf_heatmap(mat = cnmf_intersect_filt,
+                      main = "All samples",
+                      filename = glue("{figout}/cNMF_heatmap.malignant_filt.pdf"))
+
+knitr::include_graphics(glue("{figout}/cNMF_heatmap.malignant_filt.png"))
+
+```
+
+Therfore, after filtering, `r nrow(cnmf_intersect_filt)` programs remain.
+
+## Define metaprograms
+
+Gene programs identified from each tumor were then used to identify modules, i.e.
+sets of programs identified recurrently across multiple samples. We designed a recursive
+depth-first algorithm to traverse the hierarchical clustering dendrogram (extracted from the
+heatmap above) to define discrete modules.
+
+```
+1. A set of subtrees _S_ was arbitrarily initialized by cutting the dendrogram into 5 subtrees.
+2. For each subtree _t_ in _S_:
+  - if there were fewer than 4 programs in _t_, it was dropped from _S_.
+  - If the average inter-program similarity of the programs in _t_ was greater than 10, then t was considered a module.
+  - Otherwise, _t_ was cut into 2, and each resulting subtree appended to _S_.
+3. To identify the genes characterizing each module, we selected the 50 genes most frequently associated with programs belonging to the module.
+
+```
+
+The implementation of this algorithm is in the section in the dropdown below.
+
+<details>
+
+```{r define_meta_fn} 
+
+#' Extract a list of k subdendrograms from a dendrogram object
+#'
+#' Adapted from dendextend::get_subdendrograms with bug fix
+#' https://rdrr.io/cran/dendextend/src/R/get_subdendrograms.R
+get_subdendrograms2 <- function(dend, k, ...) {
+    clusters <- cutree(dend, k, ...)
+    dend_list <- lapply(unique(clusters), function(cluster.id) {
+        # bugfix: Added `names(clusters)[]` here
+        find_dendrogram(dend, names(clusters)[which(clusters == cluster.id)])
+    })
+    class(dend_list) <- "dendlist"
+    dend_list
+}
+
+#' Get the average inter-program similarity (since intra-program similarity = 100%)
+avg_similarity <- function(dend) {
+    
+    # subset the similarity matrix to programs in the provided dendrogram
+    x <- cnmf_intersect_filt[labels(dend), labels(dend)]
+    
+    # set the diagonal to NA to not count intra-program similarity
+    diag(x) <- NA
+    
+    # calculate the mean similarity in the rest of the matrix
+    mean(x, na.rm = TRUE)
+    
+}
+
+#' Given the tree produced by pheatmap::pheatmap(), a function to extract
+#' all the metaprograms from the tree
+#'
+#' We have arbitrarily initialized the thresholds for defining metaprograms.
+#' NOTE: some programs will *not* be successfully identified within metaprograms,
+#' if they don't meet the criteria. Thus, the total number of programs in the output
+#' will be fewer than in number of programs in the input.
+#'
+#' @param tree Dendrogram
+#' @param K Numeric, number of subtrees to cut \code{tree} into at the first cut
+#' @param min_similarity Numeric, minimum average similarity of programs within
+#' a subtree to define it as a metaprogram
+#' @param min_programs Numeric, minimum number of programs within a subtree to
+#' define it as a metaprogram
+#'
+#' @return A list, with one element per metaprogram identified. Each element is a
+#' character vector containing the names of the programs in the metaprogram.
+define_metaprograms <- function(tree, K = 5, min_similarity = 10, min_programs = 4) {
+    
+    define_metaprograms_recursive <- function(subtree,
+                                              min_programs,
+                                              min_similarity,
+                                              debug = FALSE) {
+        
+        # 1. if there are fewer leaves in the tree than the minimum number of
+        # programs required to define a metaprogram, drop this subtree
+        if (attr(subtree, "members") < min_programs) {
+            
+            return(NULL)
+            
+            # 2. if the average similarity within this subtree is greater than the
+            # minimum similarity, define this subtree as a metaprogram,
+            # and add it to the list
+        } else if (avg_similarity(subtree) >= min_similarity) {
+            
+            metaprograms[[i]] <<- labels(subtree)
+            # increment the counter outside the sub-function (scoping assignment)
+            i <<- i+1
+            
+            return(labels(subtree))
+            
+            # 3. if the subtree is large enough but not similar enough, cut the sutree
+            # in 2, and recurse down each child/subsubtree
+        } else {
+            
+            subsubtrees <- get_subdendrograms2(subtree, 2)
+            
+            lapply(subsubtrees, define_metaprograms_recursive,
+                   min_programs = min_programs,
+                   min_similarity = min_similarity)
+            
+        }
+    }
+    
+    # initialize counter & list
+    i <- 1
+    metaprograms <- list()
+    
+    # get the first set of subtrees to initialize S, by cutting it into K subtrees
+    S <- get_subdendrograms2(tree, K)
+    
+    # recurse!
+    x <- lapply(S, define_metaprograms_recursive,
+                min_programs   = min_programs,
+                min_similarity = min_similarity)
+    
+    # enumerate metaprograms
+    names(metaprograms) <- seq_along(metaprograms)
+    return(metaprograms)
+    
+}
+
+```
+
+</details>
+
+Using the helper function and the column dendrogram computed using `pheatmap::pheatmap()`,
+traverse the tree and identify metaprograms:
+
+```{r define_meta, dependson = 'define_meta_fn'}
+
+cnmf_metaprograms_filt <- define_metaprograms(as.dendrogram(cnmf_hm_filt$tree_col))
+
+```
+
+Do some data wrangling to get the column indices (in the heatmap) for programs
+in each metaprogram, which we'll need for later visualization:
+
+```{r define_metaprograms_filt, dependson = 'define_meta_fn'}
+
+# get column indices
+cnmf_metaprograms_filt_idx <- map(cnmf_metaprograms_filt, ~ which(hm_programs_filt %in% .x))
+
+# sort so they're from left to right
+cnmf_metaprograms_filt_order <- names(sort(map_dbl(cnmf_metaprograms_filt_idx, 1)))
+
+# put in the right order & rename
+cnmf_metaprograms_filt_idx <- cnmf_metaprograms_filt_idx[cnmf_metaprograms_filt_order]
+
+# rename metaprograms
+names(cnmf_metaprograms_filt) <- plyr::mapvalues(names(cnmf_metaprograms_filt),
+                                                 from = names(cnmf_metaprograms_filt_idx),
+                                                 to = seq_along(cnmf_metaprograms_filt_idx))
+
+# rename idx
+names(cnmf_metaprograms_filt_idx) <- seq_along(cnmf_metaprograms_filt_idx)
+
+# convert to long data frame
+cnmf_metaprograms_filt_df <- imap_dfr(cnmf_metaprograms_filt,
+                                      ~ data.frame(Metaprogram = as.numeric(.y), Program = .x,
+                                                   stringsAsFactors = FALSE)) %>% 
+    arrange(Metaprogram)
+
+hm_metaprograms_filt <- hm_programs_filt[unname(unlist(cnmf_metaprograms_filt_idx))]
+length(hm_metaprograms_filt)
+
+save(cnmf_metaprograms_filt, cnmf_metaprograms_filt_idx, hm_metaprograms_filt,
+     file = glue("{out}/cnmf_metaprograms.Rda"))
+
+# put a gap before and after each program, and get the unique
+# values, for the cases where the beginning of one program coincides
+# with the end of another
+# metaprograms_gaps <- unique(unlist(map(cnmf_metaprograms_filt_idx,
+#                                        ~ c(.x[1] - 1, .x[length(.x)]))))
+
+```
+
+Re-do the heatmap for _only_ metaprogram programs:
+
+```{r metaprograms_filt_only, dependson = 'define_meta_fn'}
+
+generate_cnmf_heatmap(mat = cnmf_intersect_filt[hm_metaprograms_filt, hm_metaprograms_filt],
+                      # we want to put a gap in the heatmap between each metaprogram
+                      # to aid visualization
+                      # we can get the new gaps by taking the length of each metaprogram,
+                      # and then running sum
+                      gaps_row = cumsum(map(cnmf_metaprograms_filt_idx, length)),
+                      gaps_col = cumsum(map(cnmf_metaprograms_filt_idx, length)),
+                      cluster_rows = FALSE,
+                      cluster_cols = FALSE,
+                      filename = glue("{figout}/cNMF_heatmap_meta_only.malignant_filt_meta.png"))
+
+generate_cnmf_heatmap(mat = cnmf_intersect_filt[hm_metaprograms_filt, hm_metaprograms_filt],
+                      gaps_row = cumsum(map(cnmf_metaprograms_filt_idx, length)),
+                      gaps_col = cumsum(map(cnmf_metaprograms_filt_idx, length)),
+                      cluster_rows = FALSE,
+                      cluster_cols = FALSE,
+                      filename = glue("{figout}/cNMF_heatmap_meta_only.malignant_filt_meta.pdf"))
+
+knitr::include_graphics(glue("{figout}/cNMF_heatmap_meta_only.malignant_filt_meta.png"))
+
+```
+
+## Program annotations {.tabset}
+
+To annotate programs, we:
+
+1. Calculate the correlation between each program's score across cells and QC
+metrics in those cells.
+
+2. Compute the overlap between the genes associated with
+each program and reference gene signatures. Reference gene signatures were obtained
+from the MSigDB collections, KEGG, PID, and Hallmark,
+as well our scRNAseq mouse brain developmental dataset, restricted to non-proliferating
+cell types. Since reference gene signatures differ in length, we use the
+**percentage of each reference signature** overlapping program-associated genes. 
+
+### Quality control metrics
+
+```{r cnmf_qc_stats_filt_meta, fig.width = 8, fig.height = 6, echo_fig = TRUE}
+
+# dot plot to display correlations
+qc_cnmf_correlations %>%
+    filter(Program %in% hm_metaprograms_filt) %>% 
+    mutate(Program = factor(Program,
+                            levels = hm_metaprograms_filt)) %>%
+    arrange(Program) %>%
+    gather(Stat, Value, 3:ncol(.)) %>%
+    rr_ggplot(aes(x = Program, y = Value), plot_num = 1) +
+    geom_hline(yintercept = 0, colour = "gray80") +
+    geom_point(alpha = 0.9, aes(colour = Value), size = 0.7) +
+    facet_wrap(~ Stat, ncol = 1) +
+    scale_colour_gradientn(colours = ylrd) +
+    theme_min() +
+    rotate_x() +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    no_legend()
+
+```
+
+Metaprogram 11 seems mainly technical here, so we also generate a version of
+the annotations without metaprogram 11.
+
+```{r cnmf_qc_stats_filt_meta_no11, fig.width = 7.5, fig.height = 6, echo_fig = TRUE}
+
+# black and white version without M11
+qc_cnmf_correlations %>%
+    filter(Program %in% hm_metaprograms_filt) %>% 
+    filter(!(Program %in% cnmf_metaprograms_filt$`11`)) %>% 
+    mutate(Program = factor(Program,
+                            levels = hm_metaprograms_filt)) %>%
+    arrange(Program) %>%
+    gather(Stat, Value, 3:ncol(.)) %>%
+    ggplot(aes(x = Program, y = Value)) +
+    geom_hline(yintercept = 0, colour = "gray80") +
+    geom_point(alpha = 0.9, colour = "black", size = 0.7) +
+    facet_wrap(~ Stat, ncol = 1) +
+    theme_min() +
+    rotate_x() +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    no_legend()
+
+```
+
+### Developmental atlas
+
+Next, calculate the overlap between cNMF genes with the mouse atlas gene signatures:
+
+```{r load_atlas_sigs}
+
+mouse_atlas_signatures <- readRDS(here("data/scRNAseq/references/mouse_atlas_extended/joint_mouse_extended.signatures_ID_20201028.Rds"))
+
+```
+
+Take the overlap between each program and each atlas signature:
+
+
+```{r mouse_atlas_signature_overlap, fig.width = 7.5, fig.height = 4.5}
+
+cnmf_intersect_atlas <- sapply(cnmf_top_genes,
+                               function(x) sapply(mouse_atlas_signatures$hg_sym, function(y) length(intersect(x, y)) / length(y)))
+dim(cnmf_intersect_atlas)
+
+cnmf_intersect_atlas_long <- cnmf_intersect_atlas %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(var = "Signature") %>%
+    gather(Program, Overlap, 2:ncol(.))
+
+# filter out signatures of proliferating cells, since we do not want to confound
+# cell cycle with cell type
+cnmf_intersect_atlas_long_input_filt_meta <- cnmf_intersect_atlas_long %>%
+    filter(!grepl("-P$|RGC|NEURP", Signature)) %>%
+    filter(Program %in% hm_metaprograms_filt) %>%
+    summarize_cell_types("Signature")
+
+length(unique(cnmf_intersect_atlas_long_input_filt_meta$Signature))
+
+```
+
+#### Empirical p-values
+
+To assess if this overlap is significant, we can compute empirical p-values by
+randomly drawing 100-gene signatures from genes detected in the mouse atlas, and
+computing their overlap with the cNMF program genes.
+
+```{r convert_genes, eval = FALSE}
+
+# get detected genes
+atlas_path <- "/lustre03/project/6004736/sjessa/from_hydra/atlas/"
+mean_expression_profile <- readRDS(file.path(atlas_path, "data/joint_mouse_extended/mean_expression_per_cluster.Rds"))
+atlas_genes <- mean_expression_profile %>% select(-1, -2) %>% colnames()
+length(atlas_genes)
+
+# convert to human
+ensembl <- useEnsembl(biomart = "genes")
+human   <- useDataset(dataset = "hsapiens_gene_ensembl", mart = ensembl)
+mouse   <- useDataset(dataset = "mmusculus_gene_ensembl", mart = ensembl)
+genes2  <- getLDS(attributes = c("mgi_symbol"),
+                 filters = "mgi_symbol",
+                 values = atlas_genes,
+                 mart = mouse,
+                 attributesL = c("hgnc_symbol"),
+                 martL = human,
+                 uniqueRows = TRUE)
+
+atlas_genes_hg <- unique(genes2[, 2])
+length(atlas_genes_hg)
+saveRDS(atlas_genes_hg, file = glue("{out}/atlas_genes_hg.Rds"))
+
+```
+
+Compute null distributions: for each reference signature, generate 1,000 random signatures of 
+the same length and compute overlaps with each tumour program signature. This function
+then will be re-used for the MSigDB collections below.
+
+```{r compute_pvalues_fun}
+
+#' @param olaps_df data frame, containing at least three columns: Program, Signature, Overlap
+#' @param ref_signature character, name of reference signature (should be present in olaps_df$Signature)
+#' @param L numeric, length of random signatures to be sampled
+#' @param N numeric, number of random iterations
+#' @param universe character, vector of genes from which to sample random signatures
+#'
+#' @return Data frame with 3 columns: Program (from cNMF), Signature (name
+#' reference signature, same as \code{ref_signature}), and p_value containing
+#' the computed empirical p-value
+calc_overlap_pvalues <- function(olaps_df, ref_signature, L, N, universe) {
+    
+    message("@ ", ref_signature)
+    
+    # repeat N times: sample random signature of same length as ref_signature,
+    # and compute overlaps with each tumour program
+    null_overlaps <- replicate(N, {
+        
+        # generate random signatures
+        random_sig <- sample(universe, L, replace = FALSE)
+        
+        # compute overlap with each tumour program signature
+        sapply(
+            cnmf_top_genes,
+            function(x) length(intersect(x, random_sig)) / length(random_sig))
+        
+    })
+    
+    # convert to tidy format
+    null_overlaps_tidy <- null_overlaps %>%
+        as.data.frame() %>%
+        tibble::rownames_to_column(var = "Program") %>%
+        reshape2::melt() %>% 
+        suppressMessages()
+    
+    # compute p-values for each tumour program
+    map_dfr(names(cnmf_top_genes), function(program) {
+        
+        # get the overlap between the signature and the tumour program
+        overlap <- olaps_df %>% 
+            filter(Program == program & Signature == ref_signature) %>% 
+            .$Overlap
+        
+        # p_value := probability of observing an equal or greater overlap by chance
+        # i.e. using the N random gene signatures
+        data.frame(Program = program,
+                   Signature = ref_signature,
+                   p_value = sum(null_overlaps[names(cnmf_top_genes)[1], ] >= overlap)/N)
+        
+    })
+    
+}
+
+# set some parameters
+N <- 1000
+p_value_threshold <- 1e-3
+
+```
+
+```{r compute_pvalues_dev, message = FALSE}
+
+# get genes detected in mouse atlas, computed above
+atlas_genes_hg <- readRDS(glue("{out}/atlas_genes_hg.Rds"))
+
+atlas_p_values <- imap_dfr(mouse_atlas_signatures$hg_sym,
+                           ~ calc_overlap_pvalues(olaps_df = cnmf_intersect_atlas_long_input_filt_meta,
+                                                  ref_signature = .y,
+                                                  N = N,
+                                                  L = length(.x),
+                                                  universe = atlas_genes_hg))
+
+cnmf_intersect_atlas_long_input_filt_meta <- cnmf_intersect_atlas_long_input_filt_meta %>%
+    left_join(atlas_p_values, by = c("Signature", "Program")) %T>% 
+    write_tsv(glue("{out}/cNMF_program_atlas_overlap_with_pvalues.tsv"))
+
+```
+
+Now plot only significantly overlapping signatures:
+
+```{r mouse_atlas_signature_overlap_signif, fig.width = 7.5, fig.height = 4.5, echo_fig = TRUE}
+
+# display signatures which, in at least one overlap, have:
+# 1. p_value < threshold
+# 2. gene overlap >= 10%
+atlas_sigs_signif <- cnmf_intersect_atlas_long_input_filt_meta %>%
+    mutate(Signif = ifelse(p_value < p_value_threshold & Overlap >= 0.1, TRUE, FALSE)) %>% 
+    group_by(Signature) %>% 
+    summarise(Signif_in_any_comparison = any(Signif)) %>% 
+    filter(Signif_in_any_comparison) %>%
+    pull(Signature)
+
+cnmf_intersect_atlas_long_input_filt_meta %>%
+    filter(Signature %in% atlas_sigs_signif) %>% 
+    mutate(Overlap = ifelse(p_value < p_value_threshold & Overlap >= 0.1, Overlap, 0)) %>% 
+    mutate(Type = factor(Type, levels = rev(names(palette_type)))) %>% 
+    mutate(Program = factor(Program, levels = hm_metaprograms_filt)) %>%
+    arrange(Type) %>%
+    ggplot(aes(x = Program, y = Overlap, colour = Type, group = Signature)) +
+    geom_line(size = 0.8, alpha = 0.5) +
+    scale_colour_manual(values = palette_type) +
+    theme_min() +
+    guides(colour = guide_legend(ncol = 2, title = NULL)) +
+    theme(legend.position = "bottom") +
+    rotate_x() +
+    ggtitle(paste0("N=", length(atlas_sigs_signif)))
+
+# a version without M11 (associated with technical factors) for the main figure
+cnmf_intersect_atlas_long_input_filt_meta %>%
+    # show the same signatures as above
+    filter(Signature %in% atlas_sigs_signif) %>% 
+    mutate(Overlap = ifelse(p_value < p_value_threshold & Overlap >= 0.1, Overlap, 0)) %>% 
+    # THEN, filter out M11
+    filter(!(Program %in% cnmf_metaprograms_filt$`11`)) %>% 
+    mutate(Type = factor(Type, levels = rev(names(palette_type)))) %>% 
+    mutate(Program = factor(Program, levels = hm_metaprograms_filt)) %>%
+    arrange(Type) %>% 
+    ggplot(aes(x = Program, y = Overlap, colour = Type, group = Signature)) +
+    geom_line(size = 0.4, alpha = 0.6) +
+    scale_colour_manual(values = palette_type) +
+    theme_min() +
+    theme(legend.position = "bottom") +
+    rotate_x()    
+
+```
+
+
+### Hallmark
+
+Second, overlap cNMF genes with MSigDB [Hallmark](http://www.gsea-msigdb.org/gsea/msigdb/collection_details.jsp#H) gene sets:
+
+```{r prep_hallmark}
+
+hallmark_gmt <- readLines(here("data/misc/MSigDb_h.all.v7.4.symbols.gmt.txt")) %>%
+    sapply(stringr::str_split, "\t")
+
+# extract genes
+hallmark <- hallmark_gmt %>% lapply(function(i) i[3:length(i)])
+length(hallmark)
+
+# set element name to the name of the gene set
+names(hallmark) <- hallmark_gmt %>%
+    lapply(function(i) i[[1]]) %>%
+    unlist(use.names = FALSE)
+
+saveRDS(hallmark, file = glue("{out}/hallmark_genelists.Rds"))
+
+cnmf_intersect_hallmark <- sapply(cnmf_top_genes,
+                                  function(x) sapply(hallmark, function(y) length(intersect(x, y)) / length(y)))
+dim(cnmf_intersect_hallmark)
+
+cnmf_intersect_hallmark_long <- cnmf_intersect_hallmark %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(var = "Signature") %>%
+    gather(Program, Overlap, 2:ncol(.))
+
+cnmf_intersect_hallmark_long2 <- cnmf_intersect_hallmark_long %>%
+    filter(Program %in% hm_metaprograms_filt)
+
+```
+
+For the MSigDB collections, our universe of genes used for sampling will be the
+set of genes expressed in single-cell tumor datasets.
+
+```{r expr_genes, message = FALSE}
+
+expr_genes_per_sample <- purrr::map(sc_samples, function(i) {
+    
+    message("@ ", basename(i))
+    
+    id <- basename(i)
+    load(glue("{i}/seurat.Rda"))
+    
+    rownames(seurat)
+    
+})
+
+# save expressed genes
+expr_genes <- Reduce(union, expr_genes_per_sample)
+length(expr_genes)
+length(unique(expr_genes))
+saveRDS(expr_genes, file = glue("{out}/expressed_genes_tumour_RNA.Rds"))
+
+```
+
+Use these as the universe for computing null distributions:
+
+```{r compute_pvalues_hallmark, message = FALSE}
+
+hallmark_p_values <- imap_dfr(hallmark,
+                              ~ calc_overlap_pvalues(olaps_df = cnmf_intersect_hallmark_long2,
+                                                     ref_signature = .y,
+                                                     N = N,
+                                                     L = length(.x),
+                                                     universe = expr_genes))
+
+cnmf_intersect_hallmark_long2 <- cnmf_intersect_hallmark_long2 %>%
+    left_join(hallmark_p_values, by = c("Signature", "Program")) %T>% 
+    write_tsv(glue("{out}/cNMF_program_hallmark_overlap_with_pvalues.tsv"))
+
+```
+
+Line plot:
+
+```{r hallmark_signature_overlap, fig.width = 7.5, fig.height = 6, echo_fig = TRUE}
+
+hallmark_sigs_signif <- cnmf_intersect_hallmark_long2 %>%
+    mutate(Signif = ifelse(p_value < p_value_threshold & Overlap >= 0.1, TRUE, FALSE)) %>% 
+    group_by(Signature) %>% 
+    summarise(Signif_in_any_comparison = any(Signif)) %>% 
+    filter(Signif_in_any_comparison) %>%
+    pull(Signature)
+
+cnmf_intersect_hallmark_long2 %>%
+    filter(Signature %in% hallmark_sigs_signif) %>% 
+    mutate(Overlap = ifelse(p_value < p_value_threshold & Overlap >= 0.1, Overlap, 0)) %>% 
+    mutate(Program = factor(Program, levels = hm_metaprograms_filt)) %>%
+    ggplot(aes(x = Program, y = Overlap, colour = Signature, group = Signature)) +
+    geom_line(size = 0.8, alpha = 0.5) +
+    theme_min() +
+    guides(colour = guide_legend(ncol = 2, title = NULL)) +
+    theme(legend.position = "bottom") +
+    rotate_x() +
+    ggtitle(paste0("N=", length(hallmark_sigs_signif)))
+
+```
+
+### KEGG gene set {.tabset}
+
+Overlap cNMF genes with MSigDB [KEGG](http://www.gsea-msigdb.org/gsea/msigdb/genesets.jsp?collection=CP:KEGG) gene sets:
+
+```{r prep_kegg}
+
+kegg_gmt <- readLines(here("data/misc/MSigDB_c2.cp.kegg.v7.4.symbols.gmt.txt")) %>%
+    sapply(stringr::str_split, "\t")
+
+# extract genes
+kegg <- kegg_gmt %>% lapply(function(i) i[3:length(i)])
+length(kegg)
+
+# set element name to the name of the gene set
+names(kegg) <- kegg_gmt %>%
+    lapply(function(i) i[[1]]) %>%
+    unlist(use.names = FALSE)
+
+saveRDS(kegg, file = glue("{out}/kegg_genelists.Rds"))
+
+cnmf_intersect_kegg <- sapply(cnmf_top_genes,
+                              function(x) sapply(kegg, function(y) length(intersect(x, y)) / length(y)))
+dim(cnmf_intersect_kegg)
+
+cnmf_intersect_kegg_long <- cnmf_intersect_kegg %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(var = "Signature") %>%
+    gather(Program, Overlap, 2:ncol(.))
+
+cnmf_intersect_kegg_long2 <- cnmf_intersect_kegg_long %>%
+    filter(Program %in% hm_metaprograms_filt)
+
+```
+
+```{r compute_pvalues_kegg, message = FALSE}
+
+kegg_p_values <- imap_dfr(kegg,
+                          ~ calc_overlap_pvalues(olaps_df = cnmf_intersect_kegg_long2,
+                                                 ref_signature = .y,
+                                                 N = N,
+                                                 L = length(.x),
+                                                 universe = expr_genes))
+
+cnmf_intersect_kegg_long2 <- cnmf_intersect_kegg_long2 %>%
+    left_join(kegg_p_values, by = c("Signature", "Program")) %T>% 
+    write_tsv(glue("{out}/cNMF_program_kegg_overlap_with_pvalues.tsv"))
+
+```
+
+Line plot:
+
+```{r kegg_signature_overlap, fig.width = 7.5, fig.height = 8, echo_fig = TRUE}
+
+kegg_sigs_signif <- cnmf_intersect_kegg_long2 %>%
+    mutate(Signif = ifelse(p_value < p_value_threshold & Overlap >= 0.1, TRUE, FALSE)) %>% 
+    group_by(Signature) %>% 
+    summarise(Signif_in_any_comparison = any(Signif)) %>% 
+    filter(Signif_in_any_comparison) %>%
+    pull(Signature)
+
+cnmf_intersect_kegg_long2 %>%
+    filter(Signature %in% kegg_sigs_signif) %>% 
+    mutate(Overlap = ifelse(p_value < p_value_threshold & Overlap >= 0.1, Overlap, 0)) %>% 
+    mutate(Program = factor(Program, levels = hm_metaprograms_filt)) %>%
+    ggplot(aes(x = Program, y = Overlap, colour = Signature, group = Signature)) +
+    geom_line(size = 0.8, alpha = 0.5) +
+    theme_min() +
+    guides(colour = guide_legend(ncol = 2, title = NULL)) +
+    theme(legend.position = "bottom") +
+    rotate_x() +
+    ggtitle(paste0("N=", length(kegg_sigs_signif)))
+
+```
+
+
+### PID
+
+Overlap cNMF genes with MSigDB [PID](http://www.gsea-msigdb.org/gsea/msigdb/genesets.jsp?collection=CP:PID) gene sets:
+
+```{r prep_pid}
+
+pid_gmt <- readLines(here("data/misc/MSigDB_c2.cp.pid.v7.4.symbols.gmt.txt")) %>%
+    sapply(stringr::str_split, "\t")
+
+# extract genes
+pid <- pid_gmt %>% lapply(function(i) i[3:length(i)])
+length(pid)
+
+# set element name to the name of the gene set
+names(pid) <- pid_gmt %>%
+    lapply(function(i) i[[1]]) %>%
+    unlist(use.names = FALSE)
+
+saveRDS(pid, file = glue("{out}/pid_genelists.Rds"))
+
+cnmf_intersect_pid <- sapply(cnmf_top_genes,
+                             function(x) sapply(pid, function(y) length(intersect(x, y)) / length(y)))
+dim(cnmf_intersect_pid)
+
+cnmf_intersect_pid_long <- cnmf_intersect_pid %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(var = "Signature") %>%
+    gather(Program, Overlap, 2:ncol(.))
+
+cnmf_intersect_pid_long2 <- cnmf_intersect_pid_long %>%
+    filter(Program %in% hm_metaprograms_filt)
+
+```
+
+```{r compute_pvalues_pid, message = FALSE}
+
+pid_p_values <- imap_dfr(pid,
+                         ~ calc_overlap_pvalues(olaps_df = cnmf_intersect_pid_long2,
+                                                ref_signature = .y,
+                                                N = N,
+                                                L = length(.x),
+                                                universe = expr_genes))
+
+cnmf_intersect_pid_long2 <- cnmf_intersect_pid_long2 %>%
+    left_join(pid_p_values, by = c("Signature", "Program")) %T>% 
+    write_tsv(glue("{out}/cNMF_program_pid_overlap_with_pvalues.tsv"))
+
+```
+
+
+Line plot:
+
+```{r pid_signature_overlap, fig.width = 7.5, fig.height = 10, echo_fig = TRUE}
+
+pid_sigs_signif <- cnmf_intersect_pid_long2 %>%
+    mutate(Signif = ifelse(p_value < p_value_threshold & Overlap >= 0.1, TRUE, FALSE)) %>% 
+    group_by(Signature) %>% 
+    summarise(Signif_in_any_comparison = any(Signif)) %>% 
+    filter(Signif_in_any_comparison) %>%
+    pull(Signature)
+
+cnmf_intersect_pid_long2 %>%
+    filter(Signature %in% pid_sigs_signif) %>% 
+    mutate(Overlap = ifelse(p_value < p_value_threshold & Overlap >= 0.1, Overlap, 0)) %>% 
+    mutate(Program = factor(Program, levels = hm_metaprograms_filt)) %>%
+    ggplot(aes(x = Program, y = Overlap, colour = Signature, group = Signature)) +
+    geom_line(size = 0.8, alpha = 0.5) +
+    theme_min() +
+    guides(colour = guide_legend(ncol = 2, title = NULL)) +
+    theme(legend.position = "bottom") +
+    rotate_x() +
+    ggtitle(paste0("N=", length(pid_sigs_signif)))
+
+```
+
+### Assemble table
+
+```{r table_cnmf_overlaps}
+
+TABLE_ref_cnmf_overlaps <- bind_rows(
+    cnmf_intersect_atlas_long_input_filt_meta %>% tibble::add_column(Source = "Atlas", .before = 1),
+    cnmf_intersect_hallmark_long2 %>% tibble::add_column(Source = "Hallmark", .before = 1),
+    cnmf_intersect_kegg_long2 %>% tibble::add_column(Source = "KEGG", .before = 1),
+    cnmf_intersect_pid_long2 %>% tibble::add_column(Source = "PID", .before = 1)
+)
+
+rr_write_tsv(TABLE_ref_cnmf_overlaps,
+             glue("{out}/TABLE_reference_cnmf_program_overlaps.tsv"),
+             "Summary of overlaps between all reference gene signatures and all tumour programs")
+
+```
+
+## Metapgrogram signatures
+
+To identify the genes characterizing each module, we selected the 50 genes most
+frequently associated with programs belonging to the module.
+
+```{r metaprograms_filt}
+
+cnmf_metaprograms_filt_sigs <- map(
+    cnmf_metaprograms_filt_idx,
+    # get the top genes for all programs in the metaprogram
+    ~ cnmf_top_genes[hm_programs_filt[.x]] %>% 
+        # flatten
+        unlist() %>%
+        # count how many programs each gene appears in
+        table() %>%
+        # sort from most to least common
+        sort(decreasing = TRUE) %>% 
+        # get the top 50
+        head(50) %>%
+        names())                              
+
+# save
+saveRDS(cnmf_metaprograms_filt_sigs, file = glue("{out}/cNMF_metaprogram_signatures.malignant_filt.Rds"))
+
+# show table
+(cnmf_metaprograms_filt_sigs_tbl <- enframe(map_chr(cnmf_metaprograms_filt_sigs, ~ glue_collapse(.x, ","))))
+write_tsv(cnmf_metaprograms_filt_sigs_tbl, glue("{out}/cNMF_metaprogram_signatures.malignant_filt.tsv"))
+
+# get unique ones
+cnmf_metaprograms_filt_sigs_uniq_flat <- unique(unlist(cnmf_metaprograms_filt_sigs))
+
+# retrieve the same lists subsetted to unique genes
+unique_genes <- c()
+cnmf_metaprograms_filt_sigs_uniq <- list()
+
+for (i in seq_along(cnmf_metaprograms_filt_sigs)) {
+    
+    # for each metaprogram, keep the genes which haven't been seen before
+    cnmf_metaprograms_filt_sigs_uniq[[i]] <- cnmf_metaprograms_filt_sigs[[i]][
+        !(cnmf_metaprograms_filt_sigs[[i]] %in% unique_genes)
+        ]
+    unique_genes <- c(unique_genes, cnmf_metaprograms_filt_sigs_uniq[[i]]) 
+    
+}
+
+```
+
+Finally, let's create a heatmap, showing the NMF score for each signature gene in across all programs:
+
+```{r metaprograms_filt_scores, message = FALSE}
+
+extract_signature_scores <- function(signatures, output_dir, program_string) {
+    
+    map_dfr(sc_samples, function(i) {
+        
+        message("@ ", basename(i))
+        
+        gene_scores <- get_cnmf_gene_scores(i, output_dir, program_string, genes_keep = signatures)
+        
+    })
+    
+}
+
+cnmf_metaprogram_gene_scores <- extract_signature_scores(cnmf_metaprograms_filt_sigs_uniq_flat, "output_ngenes2000_niter100_malignant", "_cNMF_program_malignant_")
+write_tsv(cnmf_metaprogram_gene_scores, glue("{out}/cNMF_metaprogram_gene_scores.malignant_filt.tsv"))
+
+```
+
+Heatmap:
+
+```{r metaprograms_filt_hm}
+
+plot_metaprogram_scores <- function(...) {
+    
+    x <- cnmf_metaprogram_gene_scores %>% 
+        tibble::column_to_rownames(var = "Program") %>% 
+        t() %>% 
+        # rows --> unique genes appearing in any metaprogram genes
+        # cols --> all programs which belong to a metaprogram
+        .[cnmf_metaprograms_filt_sigs_uniq_flat, hm_metaprograms_filt] %>% 
+        set_colnames(1:ncol(.))
+    
+    x[is.na(x)] <- 0
+    
+    pheatmap(x,
+             color = rdbu3, 
+             border_color = NA,
+             scale = "row",
+             gaps_col = cumsum(map(cnmf_metaprograms_filt_idx, length)),
+             gaps_row = cumsum(map(cnmf_metaprograms_filt_sigs_uniq, length)),
+             cluster_rows = FALSE,
+             cluster_cols = FALSE,
+             show_rownames = FALSE,
+             show_colnames = TRUE,
+             fontsize_col = 3,
+             cellwidth = 2,
+             cellheight = 0.5,
+             ...)
+    
+}
+
+plot_metaprogram_scores(filename = glue("{figout}/cNMF_metaprogram_scores.malignant_filt.png"))
+plot_metaprogram_scores(filename = glue("{figout}/cNMF_metaprogram_scores.malignant_filt.pdf"))
+
+knitr::include_graphics(glue("{figout}/cNMF_metaprogram_scores.malignant_filt.png"))
+
+```
+
+## Prep table of top genes / metaprogram assignment of each program
+
+Finally, for the supplementary materials, we prepare tables with top
+genes per program for each sample, and the metaprogram it was assigned to (if any):
+
+```{r cnmf_summary_table}
+
+# make dataframe with metaprogram membership
+cnmf_df_meta <- imap_dfr(cnmf_metaprograms_filt, ~ data.frame("Metaprogram" = .y, "Program" = .x)) %>% 
+    arrange(Metaprogram)
+
+# make dataframe with top genes
+cnmf_df_top <- imap_dfr(cnmf_top_genes, ~ data.frame("Program" = .y, "Top_100_program_associated_genes" = paste0(.x, collapse = ",")))
+
+cnmf_df_all <- qc_cnmf_correlations %>% 
+    left_join(cnmf_df_meta, by = "Program") %>% 
+    left_join(cnmf_program_usages, by = c("Program", "Sample")) %>% 
+    mutate(Note = case_when(
+        # these programs were included in the analysis, and were contained in a metaprogram
+        Prop >= 0.05 & !is.na(Metaprogram) ~ "Included in analysis",
+        # these programs were included in the analysis, but were part of subtrees
+        # that did not pass the metaprogram definition step
+        Prop >= 0.05 & is.na(Metaprogram) ~ "Included in analysis, not part of module",
+        # these programs (with Prop < 0.05) were used in small # of cells, 
+        # and thus were excluded
+        TRUE ~ "Excluded, rare program"
+    )) %>%
+    rename(Prop_cells_most_active = Prop) %>% 
+    left_join(cnmf_df_top, by = "Program")
+    
+# sanity checks
+cnmf_df_all %>% filter(Note == "Included in analysis, not part of module") %>% pull(Metaprogram) %>% is.na() %>% all()
+cnmf_df_all %>% filter(Note == "Included in analysis") %>% pull(Metaprogram) %>% is.na() %>% any()
+cnmf_df_all %>% filter(Note == "Excluded, rare program") %>% pull(Metaprogram) %>% is.na() %>% all()
+table(cnmf_df_all$Note)
+nrow(cnmf_df_all)
+
+rr_write_tsv(cnmf_df_all,
+             glue("{out}/TABLE_cNMF_programs_per_sample.tsv"),
+             "Overview of per-sample cNMF programs")
+
+nrow(cnmf_df_all)
+
+```
+
+# Number of malignant cells
+
+Count the total number of malignant cells -- including patients with samples profiled
+by multiple technologies, and including ATAC cells:
+
+```{r malig_cells, message = FALSE}
+
+rna_samples <- c(list.files(here("data/scRNAseq/pipeline_10X/"), full.names = TRUE))
+rna_samples <- rna_samples[!grepl("Makefile", rna_samples)]
+
+multi_samples <- list.files(here("R-4/data/scMultiome/pipeline_10X_Multiome/"), full.names = TRUE)
+multi_samples <- multi_samples[!grepl("Makefile", multi_samples)]
+
+# combine
+sc_samples_all <- c(rna_samples, multi_samples)
+
+n_cells_per_sample_rna <- purrr::map_dfr(sc_samples_all, function(i) {
+    
+    message("@ ", basename(i))
+    
+    id <- basename(i)
+    load(glue("{i}/seurat.Rda"))
+    
+    data.frame("Sample" = i,
+               "N_cells" = nrow(seurat@meta.data),
+               "N_cells_malignant" = seurat@meta.data %>% 
+                   filter(Malignant_normal_consensus %in% c("Malignant", "Likely malignant")) %>% 
+                   nrow())
+    
+})
+
+atac_samples <- c(list.files(here("R-4/data/scATACseq/pipeline_10X_ATAC"), full.names = TRUE))
+atac_samples <- atac_samples[!grepl("Makefile", atac_samples)]
+
+n_cells_per_sample_atac <- purrr::map_dfr(atac_samples, function(i) {
+    
+    message("@ ", basename(i))
+    
+    id <- basename(i)
+    load(glue("{i}/seurat.Rda"))
+    
+    # for ATACseq, cells which are not projected to immune/vascular are treated
+    # as malignant
+    data.frame("Sample" = i,
+               "N_cells" = nrow(seurat_atac@meta.data),
+               "N_cells_malignant" = seurat_atac@meta.data %>% 
+                   filter(cluster_predicted.id != "Microglia/macrophages") %>% 
+                   nrow())
+    
+})
+
+n_cells_per_sample_all <- bind_rows(n_cells_per_sample_atac, n_cells_per_sample_rna)
+
+write_tsv(n_cells_per_sample_all, glue("{out}/n_cells_per_sample.tsv"))
+
+# calculate totals
+sum(n_cells_per_sample_all$N_cells)
+sum(n_cells_per_sample_all$N_cells_malignant)
+
+```
+
+
+
+<!-- END MATTER, insert reproducibility info -->
+
+```{r footer, echo = FALSE, results = 'asis', warning = FALSE, cache = FALSE}
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "footer.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF END MATTER -->

@@ -1,0 +1,1179 @@
+---
+title: "QC and pre-processing report"
+date: "`r format(Sys.time(), '%Y/%m/%d %H:%M:%S')`"
+output:
+  html_document:
+    df_print: paged
+    theme: "flatly"
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+params:
+  config: NULL
+  macs2_path: NULL
+  assets: NULL
+---
+
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = paste0(knitr::opts_knit$get("root.dir"), "/figures/"),
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+```
+
+***
+
+# Set up
+
+Load libraries and functions:
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(cowplot)
+library(glue)
+library(Seurat)
+library(Signac)
+library(GenomeInfoDb)
+library(org.Hs.eg.db)
+library(EnsDb.Hsapiens.v75)
+library(here)
+library(tidyr)
+library(readr)
+library(dplyr)
+library(purrr)
+library(stringr)
+library(ggplot2)
+library(magrittr)
+library(kableExtra)
+
+ggplot2::theme_set(ggplot2::theme_minimal())
+source(file.path(params$assets, "resources", "functions.R")) # functions from lab pipeline
+source(here("include/style.R"))
+source(here("code/functions/scRNAseq.R"))
+
+```
+
+# Configuration
+
+Load parameters from config file:
+
+```{r config}
+
+# create out/figures directories
+out    <- "output/"; dir.create(out, recursive = TRUE)
+figout <- paste0(knitr::opts_knit$get("root.dir"), "/figures/")
+
+# project root directory
+here::here()
+
+# load config params
+config_tsv <- data.table::fread(params$config, data.table = FALSE)
+
+# coerce to a list of param:value pairs, and make sure numeric parameters are numeric type
+config <- as.list(tibble::deframe(config_tsv[, c(1, 2)]))
+config$genes <- unlist(stringr::str_split(config$genes, pattern = ","))
+config <- lapply(config, type.convert, as.is = TRUE)
+
+```
+
+# Initialization
+
+Load the output from cellranger, which countains the gene and peak counts:
+
+```{r load_data}
+
+# load genome info for hg19
+load(here(config$genome_info))
+
+# load cellranger-produced metadata with per-cell stats
+cr_metadata <- read.csv(file.path(config$cellranger_dir, "per_barcode_metrics.csv"),
+                        header = TRUE,
+                        row.names = 1)
+
+# load filtered matrices - contains both RNA and ATAC matrices
+counts <- Read10X_h5(file.path(config$cellranger_dir, "filtered_feature_bc_matrix.h5"))
+
+# list the data modalities for which counts are provided
+names(counts)
+
+```
+
+Initialize the Seurat object, with the scRNAseq data in the "RNA" assay and the scATACseq data in the "ATAC" assay.  This applies one filter: only
+genes & peaks which are detected in at least `config$min_cells` are retained. No
+further filtering on genes or peaks is performed. We also load in the TF analysis (which estimates
+a total signal for each TF in each cell) from Cellranger, in case we want to use it downstream.
+
+```{r init_seurat}
+
+# initialize Seurat object with RNA
+seurat_prefilt <- CreateSeuratObject(
+    counts = counts$`Gene Expression`,
+    assay = "RNA",
+    meta.data = cr_metadata,
+    project = config$sample,
+    min.cells = config$min_cells
+)
+
+# create the ATACseq assay
+seurat_prefilt[["ATAC"]] <- CreateChromatinAssay(
+    counts = counts$Peaks, 
+    sep = c(":", "-"),
+    genome = seqinfo_hg19, # obtained from config$genome_info
+    fragments = file.path(config$cellranger_dir, "atac_fragments.tsv.gz"),
+    min.cells = config$min_cells
+)
+
+# set gene annotations
+Annotation(seurat_prefilt[["ATAC"]]) <- annotation_hg19 # obtained from config$genome_info
+
+# load filtered tf matrix
+tf_counts <- Read10X_h5(file.path(config$cellranger_dir, "analysis/tf_analysis/filtered_tf_bc_matrix.h5"))
+
+# create the TF assay
+assay_TF <- CreateAssayObject(
+    counts = tf_counts,
+    min.cells = config$min_cells
+)
+
+seurat_prefilt[['TF']] <- assay_TF
+
+```
+
+
+## Initialize warnings
+
+```{r warnings}
+
+warnings <- list("LOW_N_CELLS"        = FALSE,
+                 "HIGH_MITO"          = FALSE,
+                 "HIGH_PROP_FILTERED" = FALSE,
+                 "LOW_AVG_UMI"        = FALSE,
+                 "CC_ASSIGNMENT"      = FALSE,
+                 "SMALL_CLUSTERS"     = FALSE)
+
+```
+
+
+# Computing QC metrics
+
+In this section, we compute several QC metrics for scRNAseq/scATACseq, filter cells based on the distributions
+of these metrics, and then assess the distributions of these metrics after filtering.
+
+For some definitions related to the different metrics computed from Multiome data,
+see the 10X glossary at: https://support.10xgenomics.com/single-cell-multiome-atac-gex/software/pipelines/latest/glossary
+
+In particular, note that for RNA, counts represent the *number of UMIs*, while for ATAC, counts represent the *number of cut/transposition sites*.
+
+> Count Matrix: A matrix of counts representing the number of unique observations of each Feature within each Cell Barcode. Each feature (gene or peak) is a row in the matrix, while each barcode is a column. For a gene feature the count represents the number of UMIs observed while for a peak the count represents the number of transposition sites within the peak region.
+
+## scRNA metrics: mitochondrial and ribosomal content
+
+For quality control, we assess the mitochondrial content and ribosomal content
+at the single-cell level, using the proportion of reads which map to mitochondrial
+genes, or ribosomal protein genes, respectively.
+
+```{r compute_mito_ribo}
+
+DefaultAssay(seurat_prefilt) <- "RNA"
+
+# identify mitochondrial genes, which depends on the species, due to gene name differences
+if (config$species == "h_sapiens") {
+    mito_genes <- grep("^MT-", rownames(GetAssayData(object = seurat_prefilt)), value = TRUE)
+} else if (config$species == "m_musculus") {
+    mito_genes <- grep("^mt-", rownames(GetAssayData(object = seurat_prefilt)), value = TRUE)
+}
+
+# compute, for each cell, the proportion of reads in mitochondrial genes, and add to the metadata
+percent_mito <- Matrix::colSums(GetAssayData(object = seurat_prefilt)[mito_genes, ]) /
+    Matrix::colSums(GetAssayData(object = seurat_prefilt)) * 100
+seurat_prefilt <- AddMetaData(seurat_prefilt, percent_mito, "percent.mito")
+
+# identify ribosomal genes, which depends on the species, due to gene name differences
+if (config$species == "h_sapiens") {
+    ribo_genes <- grepl("^RPS|^RPL|^MRPS|^MRPL", rownames(GetAssayData(object = seurat_prefilt)))
+} else if (config$species == "m_musculus") {
+    ribo_genes <- grepl("^Rps|^Rpl|^Mrps|^Mrpl", rownames(GetAssayData(object = seurat_prefilt)))
+}
+
+# compute, for each cell, the proportion of reads in ribsomal genes, and add to the metadata
+percent_ribo <- Matrix::colSums(GetAssayData(object = seurat_prefilt)[ribo_genes, ]) /
+    Matrix::colSums(GetAssayData(object = seurat_prefilt)) * 100
+seurat_prefilt <- AddMetaData(seurat_prefilt, percent_ribo, "percent.ribo")
+
+```
+
+## scATAC metrics: nucleosome signal and TSS enrichment
+
+Here we calculate Nucleosome signal and TSS enrichment, which are described below with the resulting plots.
+
+```{r compute_qc}
+
+DefaultAssay(seurat_prefilt) <- "ATAC"
+
+# compute stats using Signac functions
+seurat_prefilt <- NucleosomeSignal(object = seurat_prefilt)
+seurat_prefilt <- TSSEnrichment(seurat_prefilt, fast = FALSE)
+
+```
+
+Because fragments correspond to cutting at different integer multiples of nucleosomes,
+the distribution of fragment lengths should reveal a specific nucleosome banding pattern, with a fragment
+length periodicity of ~200bp. We separate
+cells based on the nucleosome signal, and it should be clear that one population
+has the typical periodic nucleosome banding pattern.
+
+```{r nucleosome_signal, fig.width = 7, fig.height = 4}
+
+p1 <- VlnPlot(seurat_prefilt, "nucleosome_signal", pt.size = -1) + NoLegend()
+
+sum(is.infinite(seurat_prefilt@meta.data$nucleosome_signal))
+
+# deal with inf values
+seurat_prefilt@meta.data$nucleosome_signal[is.infinite(seurat_prefilt@meta.data$nucleosome_signal)] <- 0
+
+seurat_prefilt$nucleosome_group <- ifelse(seurat_prefilt$nucleosome_signal > 2, 'NS > 2', 'NS < 2')
+p2 <- FragmentHistogram(object = seurat_prefilt, group.by = 'nucleosome_group', region = 'chr1-1-10000000') +
+    scale_fill_manual(values = c("forestgreen", "gray80"))
+
+cowplot::plot_grid(p1, p2, rel_widths = c(0.3, 0.7), align = "hv", axis = "tb")
+
+```
+
+We also quantify chromatin accessibility at transcription start sites (TSS).
+Successful scATACseq experiments should have a strong enrichment of accessibility
+near TSS, and we can again use this metric to stratify cells:
+
+```{r tss_enrichment, fig.width = 7, fig.height = 4}
+
+p1 <- VlnPlot(seurat_prefilt, "TSS.enrichment", pt.size = -1) + NoLegend()
+
+seurat_prefilt$high.tss <- ifelse(seurat_prefilt$TSS.enrichment > 2, 'High', 'Low')
+p2 <- TSSPlot(seurat_prefilt, group.by = 'high.tss') + NoLegend() +
+    scale_color_manual(values = c("forestgreen", "gray80"))
+
+cowplot::plot_grid(p1, p2, rel_widths = c(0.3, 0.7), align = "hv", axis = "tb")
+
+```
+
+
+## Generate thresholds
+
+The thresholds used are a combination of hard cutoffs and cutoffs computed based
+on the distribution of each metric within the sample.
+
+
+```{r thresholds}
+
+thresholds <- data.frame(
+    # the minimum number of features will be the greater of:
+    # 400, or 2 standard deviations below the mean
+    min_features = max(400, round(mean(seurat_prefilt@meta.data$nFeature_RNA) -
+                                      2*sd(seurat_prefilt@meta.data$nFeature_RNA))),
+    max_features = round(mean(seurat_prefilt@meta.data$nFeature_RNA) +
+                             2*sd(seurat_prefilt@meta.data$nFeature_RNA)),
+    min_mito     = 0,
+    # by default,
+    # the max mitochondrial content will be the maximum of:
+    # 5%, or 2 standard deviations above the mean
+    # the parameter config$max_mito allows to set a hard upper threshold,
+    # which takes precedence
+    max_mito     = ifelse(!is.null(config$max_mito),
+                          config$max_mito,
+                          max(5, round(mean(seurat_prefilt@meta.data$percent.mito) +
+                                           2*sd(seurat_prefilt@meta.data$percent.mito))
+                          )
+    ),
+    # set a max of 0 in case the value 2 standard deviations below the mean
+    # is negative
+    min_umi      = max(0, round(mean(seurat_prefilt@meta.data$nCount_RNA) -
+                                    2*sd(seurat_prefilt@meta.data$nCount_RNA))),
+    max_umi      = round(mean(seurat_prefilt@meta.data$nCount_RNA) +
+                             2*sd(seurat_prefilt@meta.data$nCount_RNA)),
+    min_peak_region_fragments  = max(config$min_peak_region_fragments,
+                                     round(mean(seurat_prefilt@meta.data$atac_peak_region_fragments) - 2*sd(seurat_prefilt@meta.data$atac_peak_region_fragments))),
+    max_peak_region_fragments = round(mean(seurat_prefilt@meta.data$atac_peak_region_fragments) + 2*sd(seurat_prefilt@meta.data$atac_peak_region_fragments)),
+    max_nucleosome_signal     = ifelse(!is.na(config$max_nucleosome_signal), config$max_nucleosome_signal,
+                                       round(mean(seurat_prefilt@meta.data$nucleosome_signal) + 2*sd(seurat_prefilt@meta.data$nucleosome_signal))),
+    max_TSS.enrichment        = round(mean(seurat_prefilt@meta.data$TSS.enrichment) + 2*sd(seurat_prefilt@meta.data$TSS.enrichment)),
+    min_TSS.enrichment        = round(mean(seurat_prefilt@meta.data$TSS.enrichment) - 2*sd(seurat_prefilt@meta.data$TSS.enrichment))
+)
+
+thresholds
+
+```
+
+## QC metrics before filtering
+
+```{r qc_vln_plot_before_filtering, fig.width = 13, fig.height = 4}
+
+vln_custom <- function(feature, y_int = NULL, pt_size = -1, filt = "pre") {
+    
+    object <- switch(filt, "pre" = seurat_prefilt, "post" = seurat)
+    
+    p1 <- VlnPlot(object = object, features = feature, pt.size = pt_size, cols = "gray80") +
+        no_legend() + ylab(NULL) + xlab(NULL) +
+        theme(title = element_text(size = 8, face = "plain"),
+              axis.text.x = element_blank())
+    
+    if (!is.null(y_int)) p1 + geom_hline(yintercept = y_int, color = "red") 
+    else p1
+    
+}
+
+plot_grid(
+    vln_custom("nFeature_RNA", c(thresholds$min_features, thresholds$max_features)),
+    vln_custom("nCount_RNA", c(thresholds$min_umi, thresholds$max_umi)),
+    vln_custom("percent.mito", c(thresholds$min_mito, thresholds$max_mito)),
+    vln_custom("nCount_ATAC"),
+    vln_custom("nFeature_ATAC"),
+    vln_custom("atac_peak_region_fragments", c(thresholds$min_peak_region_fragments, thresholds$max_peak_region_fragments)),
+    vln_custom("TSS.enrichment", c(thresholds$min_TSS.enrichment, thresholds$max_TSS.enrichment)),
+    vln_custom("nucleosome_signal", c(thresholds$min_TSS.enrichment, thresholds$max_TSS.enrichment)),
+    ncol = 8,
+    align = "h", axis = "tb"
+)
+
+plot_grid(
+    vln_custom("nFeature_RNA", c(thresholds$min_features, thresholds$max_features), pt_size = 0.1),
+    vln_custom("nCount_RNA", c(thresholds$min_umi, thresholds$max_umi), pt_size = 0.1),
+    vln_custom("percent.mito", c(thresholds$min_mito, thresholds$max_mito), pt_size = 0.1),
+    vln_custom("nCount_ATAC", pt_size = 0.1),
+    vln_custom("nFeature_ATAC", pt_size = 0.1),
+    vln_custom("atac_peak_region_fragments", c(thresholds$min_peak_region_fragments, thresholds$max_peak_region_fragments), pt_size = 0.1),
+    vln_custom("TSS.enrichment", c(thresholds$min_TSS.enrichment, thresholds$max_TSS.enrichment), pt_size = 0.1),
+    vln_custom("nucleosome_signal", c(thresholds$min_TSS.enrichment, thresholds$max_TSS.enrichment), pt_size = 0.1),
+    ncol = 8,
+    align = "h", axis = "tb"
+)
+
+```
+
+## Filtering and QC metrics after filtering
+
+```{r filter_seurat}
+
+# filter cells
+seurat <- subset(
+    x = seurat_prefilt,
+    subset =
+        nFeature_RNA > thresholds$min_features & 
+        nFeature_RNA < thresholds$max_features &
+        nCount_RNA > thresholds$min_umi &
+        nCount_RNA < thresholds$max_umi &
+        percent.mito > thresholds$min_mito &
+        percent.mito < thresholds$max_mito &
+        atac_peak_region_fragments > thresholds$min_peak_region_fragments &
+        atac_peak_region_fragments < thresholds$max_peak_region_fragments &
+        nucleosome_signal     < thresholds$max_nucleosome_signal &
+        TSS.enrichment        > thresholds$min_TSS.enrichment &
+        TSS.enrichment        < thresholds$max_TSS.enrichment
+)
+
+```
+
+```{r qc_vln_plot_after_filtering, fig.width = 13, fig.height = 4}
+
+plot_grid(
+    vln_custom("nFeature_RNA", filt = "post"),
+    vln_custom("nCount_RNA", filt = "post"),
+    vln_custom("percent.mito", filt = "post"),
+    vln_custom("nCount_ATAC", filt = "post"),
+    vln_custom("nFeature_ATAC", filt = "post"),
+    vln_custom("atac_peak_region_fragments", filt = "post"),
+    vln_custom("TSS.enrichment", filt = "post"),
+    vln_custom("nucleosome_signal", filt = "post"),
+    ncol = 8,
+    align = "h", axis = "tb"
+)
+
+plot_grid(
+    vln_custom("nFeature_RNA", filt = "post", pt_size = 0.1),
+    vln_custom("nCount_RNA", filt = "post", pt_size = 0.1),
+    vln_custom("percent.mito", filt = "post", pt_size = 0.1),
+    vln_custom("nCount_ATAC", filt = "post", pt_size = 0.1),
+    vln_custom("nFeature_ATAC", filt = "post", pt_size = 0.1),
+    vln_custom("atac_peak_region_fragments", filt = "post", pt_size = 0.1),
+    vln_custom("TSS.enrichment", filt = "post", pt_size = 0.1),
+    vln_custom("nucleosome_signal", filt = "post", pt_size = 0.1),
+    ncol = 8,
+    align = "h", axis = "tb"
+)
+
+```
+
+## Output summary stats and filtering metrics
+
+For each of the metrics we filtered on, we save the min, max and mean before and after filtering, as well as the lower and upper thresholds used.
+
+```{r filtering_metrics}
+
+filtering_criteria <- c(
+    "nFeature_RNA", "nCount_RNA",  "percent.mito",
+    "atac_peak_region_fragments", "nucleosome_signal", "TSS.enrichment")
+
+# compute summary stats for each metric
+filtering_metrics <- sapply(filtering_criteria, function(criterion) {
+    
+    min_pre   <- round(min(seurat_prefilt@meta.data  %>% pull(criterion)), 2)
+    mean_pre  <- mean(seurat_prefilt@meta.data %>% pull(criterion))
+    max_pre   <- max(seurat_prefilt@meta.data  %>% pull(criterion))
+    sd_pre    <- sd(seurat_prefilt@meta.data   %>% pull(criterion))
+    
+    min_post  <- min(seurat@meta.data  %>% pull(criterion))
+    mean_post <- mean(seurat@meta.data %>% pull(criterion))
+    max_post  <- max(seurat@meta.data  %>% pull(criterion))
+    sd_post   <- sd(seurat@meta.data   %>% pull(criterion))
+    
+    return(c("min.preQC"   = min_pre,
+             "mean.preQC"  = mean_pre,
+             "max.preQC"   = max_pre,
+             "sd.preQC"    = sd_pre,
+             "min.postQC"  = min_post,
+             "mean.postQC" = mean_post,
+             "max.postQC"  = max_post,
+             "sd.postQC"   = sd_post))
+    
+})
+
+# round to 2 decimal places
+filtering_metrics <- apply(filtering_metrics, 2, round, 3)
+
+# transform into a dataframe
+filtering_metrics <- filtering_metrics %>%
+    t() %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(var = "criterion") %>%
+    dplyr::select(criterion, min.preQC, min.postQC, max.preQC, max.postQC, mean.preQC, mean.postQC, sd.preQC, sd.postQC)
+
+# add thresholds
+filtering_metrics$min.threshold <- c(
+    thresholds$min_features,
+    thresholds$min_umi,
+    NA,
+    thresholds$min_peak_region_fragments,
+    NA,
+    thresholds$min_TSS.enrichment)
+
+filtering_metrics$max.threshold <- c(
+    thresholds$max_features,
+    thresholds$max_umi,
+    thresholds$max_mito,
+    thresholds$max_peak_region_fragments,
+    thresholds$max_nucleosome_signal,
+    thresholds$max_TSS.enrichment)
+
+filtering_metrics
+
+# compute number of cells before and after filtering
+N_cells_metrics <- data.frame(
+    "N_cells_before" = dim(seurat_prefilt@meta.data)[1],
+    "N_cells_after"  = dim(seurat@meta.data)[1]) %>%
+    mutate(Prop_kept = round(N_cells_after / N_cells_before, 2))
+
+N_cells_metrics
+
+```
+
+
+This report will register warnings if:
+
+- there are few cells after filtering (<1000)
+- more than 40% of cells were filtered out
+- the max mitochondrial content after filtering is > 5% (indicating a higher threshold needed to be used)
+- the average number of UMIs after filtering is < 2000
+
+The warnings will be output at the end of the report, and saved as a TSV
+if any warning flags are `TRUE`.
+
+
+```{r qc_warnings}
+
+if (N_cells_metrics$N_cells_after < 1000) warnings$LOW_N_CELLS <- TRUE
+if (N_cells_metrics$Prop_kept < 0.6) warnings$HIGH_PROP_FILTERED <- TRUE
+if (filtering_metrics[filtering_metrics$criterion ==
+                      "nCount_RNA", ]$mean.postQC < 2000) warnings$LOW_AVG_UMI <- TRUE
+if (filtering_metrics[filtering_metrics$criterion ==
+                      "percent.mito", ]$max.postQC > 5) warnings$HIGH_MITO <- TRUE
+
+```
+
+
+# Peak calling
+
+We next re-call peaks using MACS2, following the Signac documentation,
+to identify a more accurate set of peaks. Peaks are called for all cells together.
+Note that this involves two slow steps (peak calling, and feature counting):
+
+```{r call_peaks_macs2}
+
+# call peaks using MACS2
+# NOTE: this won't work in RStudio b/c the python version (3.7) needed for MACS2
+# conflicts with the python version used with jupyter (3.6)
+peaks <- CallPeaks(seurat, macs2.path = params$macs2_path)
+
+# remove peaks on nonstandard chromosomes and in genomic blacklist regions
+peaks <- keepStandardChromosomes(peaks, pruning.mode = "coarse")
+peaks <- subsetByOverlaps(x = peaks, ranges = Signac::blacklist_hg19, invert = TRUE)
+
+```
+
+Next we count reads in each peak and add to the Seurat object:
+
+```{r quant_peaks}
+
+# quantify counts in each peak
+macs2_counts <- FeatureMatrix(
+  fragments = Fragments(seurat),
+  features = peaks,
+  cells = colnames(seurat)
+)
+
+# create a new assay using the MACS2 peak set and add it to the Seurat object
+seurat[["peaks"]] <- CreateChromatinAssay(
+  counts = macs2_counts,
+  genome = seqinfo_hg19,
+  fragments = file.path(config$cellranger_dir, "atac_fragments.tsv.gz"),
+  min.cells = config$min_cells
+)
+
+# set gene annotations
+Annotation(seurat[["peaks"]]) <- annotation_hg19 # obtained from config$genome_info
+
+```
+
+
+# Normalization and dimensionality reduction
+
+## scRNA
+
+Normalization of gene expression data is performed using two different methods. `SCTransform` normalizes UMI data
+using a variance stabilized transform based on a negative binomial regression model, and
+simultaneously regresses unwanted sources of variation (by default, number
+of UMIs and mitochondrial content). The sequence of `NormalizeData`,
+`FindVariableFeatures`, and `ScaleData` comprise the second method, which scale
+counts to 10,000 UMIs per cell, log2-transform counts, and then regress out
+unwanted sources of variation.
+
+The log-normalized
+values are set as the default assay in the Seurat object, but the SCTransform values
+are saved in the `SCTransform` assay of the Seurat object, accessible with
+`seurat[["SCT"]]`.
+
+```{r rna_norm_scale, message = FALSE, warning = FALSE}
+
+DefaultAssay(seurat) <- "RNA"
+
+# normalization 1: scale counts to 10000 UMIs per cell, and log2-transform the counts
+# set the default assay to RNA to run the log-normalization & scaling
+seurat <- seurat %>% 
+  NormalizeData(normalization.method = "LogNormalize",
+                scale.factor         = 10000) %>% 
+  # identify variable genes
+  FindVariableFeatures(mean.function       = ExpMean,
+                       dispersion.function = LogVMR) %>%
+  # regress out variables which are sources of unwanted variation, and z-score data
+  ScaleData(vars.to.regress = unlist(str_split(config$var_regress, ",")))
+
+# normalization 2: using SCTransform
+# this command also identifies variable features and produces scaled values
+seurat <- seurat %>%
+  SCTransform(vars.to.regress = unlist(str_split(config$var_regress, ",")), verbose = FALSE)
+
+# we also run PCA at this step, based on scaled data
+DefaultAssay(seurat) <- "RNA"
+seurat <- RunPCA(seurat,
+                 pc.genes        = VariableFeatures(.),
+                 npcs            = config$rna_pcs_keep,
+                 ndims.print     = 1:5,
+                 nfeatures.print = 5)
+
+```
+
+## scATAC
+
+scATACseq processing is done using latent semantic indexing (LSI), and uses a different
+method for normalization due to increased data sparsity compared to scRNAseq. We
+perform normalization with the TF-IDF method, which takes into account
+both sequencing depth and frequency/rarity of peaks. Rather than feature
+selection based on variability (difficult due to data sparsity), we keep
+the top n features. Here, we're keeping all of them. Finally, analogous to PCA,
+we perform a linear dimensionality reduction with SVD.
+
+Often, the first component is highly correlated with technical features, and
+should not be included in downstream analyses; this is assesed using the correlation
+plot with depth.
+
+```{r atac_norm_svd}
+
+DefaultAssay(seurat) <- "peaks"
+
+seurat <- RunTFIDF(seurat)
+seurat <- FindTopFeatures(seurat, min.cutoff = 'q0')
+seurat <- RunSVD(object = seurat)
+
+```
+
+Check if first LSI is highly correlated with depth:
+
+```{r lsi_depth_cor, fig.width = 4, fig.height = 5}
+
+DepthCor(seurat)
+
+```
+
+
+
+# Joint dimensionality reduction
+
+We use Seurat's weighted nearest neighbor methods to compute the joint graph from both data types,
+which will then be used as input to performing non-linear dimensionality reduction
+using UMAP, followed by clustering. 
+
+```{r joint_umap, fig.width = 6, fig.height = 5}
+
+# build a joint neighbor graph using both assays
+seurat <- FindMultiModalNeighbors(
+  object = seurat,
+  reduction.list = list("pca", "lsi"), 
+  dims.list = list(1:config$rna_pcs_keep, 2:config$atac_pcs_keep),
+  modality.weight.name = "RNA.weight",
+  verbose = FALSE
+)
+
+# build a joint UMAP visualization
+seurat <- RunUMAP(
+  object = seurat,
+  nn.name = "weighted.nn",
+  assay = "RNA",
+  verbose = FALSE
+)
+
+umap(seurat, label = FALSE, legend = FALSE)
+
+```
+
+# Joint clustering
+
+Cluster based on the weighted nearest neighbour graph computed in the previous step. We'll do so with several resolutions, and save the chosen revolution specified in the configuration file.
+
+```{r umap_clustering_resolution, fig.height = 8, fig.width = 14, message = FALSE}
+
+# step 2: identify clusters
+# To repeat the clustering at various resolutions, we create a function
+# with the parameters that will be held constant, and call it several time
+# with different values for resolution
+clustering_fun <- purrr::partial(FindClusters,
+                                 object = seurat,
+                                 algorithm = 3,
+                                 graph.name = "wsnn", # use the joint neighbour-network
+                                 verbose = FALSE,
+                                 n.start = 10,
+                                 random.seed = config$seed)
+
+seurat <- clustering_fun(resolution = 0.2)
+p0 <- umap(seurat, title = "res 0.2")
+
+seurat <- clustering_fun(resolution = 0.6)
+p1 <- umap(seurat, title = "res 0.6")
+
+seurat <- clustering_fun(resolution = 0.8)
+p2 <- umap(seurat, title = "res 0.8")
+
+seurat <- clustering_fun(resolution = 1)
+p3 <- umap(seurat, title = "res 0.1")
+
+seurat <- clustering_fun(resolution = 2)
+p4 <- umap(seurat, title = "res 2")
+
+seurat <- clustering_fun(resolution = config$clustering_resolution)
+p5 <- umap(seurat, title = paste0("chosen resolution: ", config$clustering_resolution))
+
+plot_grid(p0, p1, p2, p3, p4, p5, ncol = 3)
+
+```
+
+Finalize the chosen resolution:
+
+```{r umap_clustering, fig.width = 6, fig.height = 5}
+
+Idents(seurat) <- "seurat_clusters" # choose last clustering
+
+seurat@misc$colours <- set_qual_pal(length(levels(Idents(seurat)))) %>%
+    set_names(levels(Idents(seurat)))
+
+umap(seurat, colors = seurat@misc$colours, legend = TRUE)
+
+```
+
+
+# Cell cycle scoring
+
+To score cells for their cell cycle activity, we use three different methods.
+
+First, we compute the mean expression of the cell cycle phase markers from Whitfield
+et al, 2002.
+
+```{r compute_cc_whitfield}
+
+DefaultAssay(seurat) <- "RNA"
+cell.cycle.genes.whitfield.2002 <- data.table::fread(file.path(
+  params$assets,
+  "resources",
+  "CellCycleGeneList_1134_whitfield_2002_mice_gene_symbols.txt"))
+
+# compute cell cycle scores
+cc <- compute_cell_cycle_whitfield(seurat,
+                                   species = config$species,
+                                   return_scores = TRUE)
+
+# add the scores to the Seurat object metadata
+seurat <- AddMetaData(seurat,
+                      setNames(cc$g1.s.scores, cc$cell),
+                      "G1.S.score_Whitfield")
+
+seurat <- AddMetaData(seurat,
+                      setNames(cc$g2.m.scores, cc$cell),
+                      "G2.M.score_Whitfield")
+
+```
+
+Plotting the Whitfield cell cycle phase scores:
+
+```{r cell_cycle_whitfield, fig.width = 18, fig.height = 6}
+
+compute_cell_cycle_whitfield(seurat, species = config$species, return_scores = FALSE) +
+  scale_color_manual(values = seurat@misc$colours)
+
+```
+
+Next, we compute the scores using the method implemented in Seurat:
+
+```{r cell_cycle_seurat, fig.width = 9, fig.height = 8}
+
+# a list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat;
+# segregate this list into markers of G2/M phase and markers of S phase
+s_genes   <- cc.genes$s.genes
+g2m_genes <- cc.genes$g2m.genes
+
+seurat <- CellCycleScoring(seurat,
+                           s.features   = s_genes,
+                           g2m.features = g2m_genes)
+
+cc.markers <- switch(config$species,
+                     "h_sapiens" = c("PCNA", "TOP2A", "MCM6", "MKI67"),
+                     "m_musculus" = c("Pcna", "Top2a", "Mcm6", "Mki67"))
+
+RidgePlot(seurat, group.by = "Phase", features = cc.markers, ncol = 2)
+
+```
+
+Plot the correlation between the G2/M score from Seurat (y-axis) an the G2/M
+score based on the Whitfield genes (x-axis), as well as the correlation with TOP2A:
+
+```{r cell_cycle_correlation, fig.width = 14, fig.height = 4}
+
+phase_palette <- c("G1" = "#F8766D", "G2M" = "#00BA38", "S" = "#619CFF")
+
+p1 <- FeatureScatter(seurat, "G2.M.score_Whitfield", "G2M.Score",
+                     cols = seurat@misc$colours)
+
+p2 <- FeatureScatter(seurat, "G2.M.score_Whitfield", "G2M.Score",
+                     group.by = "Phase",
+                     cols = phase_palette)
+
+top2a_gene <- switch(config$species,
+                     "h_sapiens" = "TOP2A",
+                     "m_musculus" = "Top2a")
+
+if (top2a_gene %in% rownames(seurat)) {
+  
+  p3 <- FeatureScatter(seurat, top2a_gene, "G2M.Score",
+                       cols = seurat@misc$colours)
+  
+  p4 <- FeatureScatter(seurat, top2a_gene, "G2M.Score",
+                       group.by = "Phase",
+                       cols = phase_palette)
+  
+  cowplot::plot_grid(p1, p2, p3, p4, ncol = 4)
+  
+} else {
+  
+  # Top2a is not detected
+  cowplot::plot_grid(p1, p2)
+  
+}
+
+```
+
+```{r cell_cycle_correlation_g2m_cells_only, fig.width = 14, fig.height = 4}
+
+# show only cells assigned G2/M
+p1 <- FeatureScatter(seurat, "G2.M.score_Whitfield", "G2M.Score",
+                     cells = WhichCells(seurat, expression = Phase == "G2M"),
+                     cols = seurat@misc$colours)
+
+p2 <- FeatureScatter(seurat, "G2.M.score_Whitfield", "G2M.Score",
+                     group.by = "Phase",
+                     cols = phase_palette,
+                     cells = WhichCells(seurat, expression = Phase == "G2M"))
+
+if (top2a_gene %in% rownames(seurat)) {
+  
+  p3 <- FeatureScatter(seurat, top2a_gene, "G2M.Score",
+                       cells = WhichCells(seurat, expression = Phase == "G2M"),
+                       cols = seurat@misc$colours)
+  
+  p4 <- FeatureScatter(seurat, top2a_gene, "G2M.Score",
+                       group.by = "Phase",
+                       cols = phase_palette,
+                       cells = WhichCells(seurat, expression = Phase == "G2M"))
+  
+  cowplot::plot_grid(p1, p2, p3, p4, ncol = 4)
+  
+} else {
+  
+  cowplot::plot_grid(p1, p2)
+  
+}
+
+```
+
+UMAP plot coloured by phase:
+
+```{r umap_cc_phase, fig.width = 5, fig.height = 4}
+
+umap(seurat, "Phase", colors = phase_palette)
+
+```
+
+Register a warning if more than half of the cells labelled G2M have
+low TOP2A expression:
+
+```{r top2a_check}
+
+if (top2a_gene %in% rownames(seurat)) {
+
+  # subset to cells assigned as G2M phase
+  top2a_expr <- as.matrix(subset(seurat,
+                                 subset = Phase == "G2M")[["RNA"]][top2a_gene, ])
+
+  # if more than 50% of cells assigned as G2M phase have low TOP2A expression,
+  # flag it
+  (prop_low_top2a <- (sum(top2a_expr < 1) / length(top2a_expr)))
+  if (prop_low_top2a > 0.5) warnings$CC_ASSIGNMENT <- TRUE
+
+} else {
+
+  # Top2a is not detected
+  warnings$CC_ASSIGNMENT <- TRUE
+
+}
+
+```
+
+
+
+
+
+# Cluster-level QC
+
+Number of cells in each cluster:
+
+```{r number_cells}
+
+table(Idents(object = seurat))
+
+```
+
+Register a warning of more than a third of the clusters have fewer than 100 cells:
+
+```{r clustering_warning}
+
+# number of clusters with < 100 cells, divided by the total number of clusters
+if (sum(table(Idents(seurat)) < 100) /
+    length(levels(Idents(seurat))) > 0.33) warnings$SMALL_CLUSTERS <- TRUE
+
+```
+
+UMAP coloured by QC stats:
+
+```{r umap_qc, fig.width = 14, fig.height = 11}
+
+qc_metrics <-  c('nFeature_RNA', 'nCount_RNA', 'percent.mito', 'nCount_ATAC',
+                 'nFeature_ATAC', 'atac_peak_region_fragments',
+                 'TSS.enrichment', 'nucleosome_signal', 'G1.S.score_Whitfield',
+                 'G2.M.score_Whitfield')
+
+map(qc_metrics, ~ umap(seurat,
+                       color_by = .x,
+                       color_by_type = "continuous",
+                       colors = rdbu)) %>% 
+    {plot_grid(plotlist = ., ncol = 3, align = "hv", axis = "tblr")}
+
+```
+
+
+Violin plots of the distribution of each QC metric in each cluster, with the 
+number of cells in each cluster indicated above each violin:
+
+```{r vln_QC_per_cluster, fig.width = 10, fig.height = 4, warning = FALSE}
+
+# make a dataframe of the number of cells per cluster
+clust_df <- data.frame(table(Idents(object = seurat)))
+clust_df[1, 2] <- paste0("N=", clust_df[1, 2])
+colnames(clust_df) <- c("ident", "N")
+
+vln_fun <- function(criterion) {
+    
+    # plot the labels at a value slightly below the max, to ensure they're shown
+    # within plot limits
+    clust_df$y <- max(seurat[[criterion]]) * 0.95
+    Seurat::VlnPlot(seurat, criterion, cols = seurat@misc$colours, pt.size = 0.2) +
+        theme(legend.position = "none") +
+        geom_text(data = clust_df, aes(label = N, x = ident, y = y)) +
+        xlab("Cluster")
+    
+}
+
+vln_fun("nCount_RNA")
+vln_fun("nFeature_RNA")
+vln_fun("percent.mito")
+vln_fun("nCount_ATAC")
+vln_fun("nFeature_ATAC")
+vln_fun("atac_peak_region_fragments")
+vln_fun("TSS.enrichment")
+vln_fun("nucleosome_signal")
+vln_fun("G1.S.score_Whitfield")
+vln_fun("G2.M.score_Whitfield")
+
+```
+
+
+
+# Create promoter activity matrix
+
+The ATAC data features are peaks, but it can also be useful to have a quantification
+of chromatin accessibility on a per-gene basis. This is done by counting
+fragments which overlap the gene promoter, defned as TSS +/- 2.5kbp.
+
+**NOTE**, this is a divergence
+from the Signac tutorial, which quantifies accessibility, over entire gene promoters & entire gene
+bodies.
+
+```{r promoter_coords}
+
+# load genome info for hg19
+load(here(config$promoter_coords))
+
+```
+
+```{r gene_activity}
+
+# create a gene by cell matrix (slow step)
+gene.activities <- FeatureMatrix(
+  fragments = seurat@assays$peaks@fragments,
+  features = promoter.coords,
+  cells = colnames(seurat))
+
+# convert rownames from chromsomal coordinates into gene names
+gene.key <- promoter.coords$gene_name
+names(gene.key) <- GRangesToString(grange = promoter.coords)
+rownames(gene.activities) <- gene.key[rownames(gene.activities)]
+
+# add the gene activity matrix to the seurat object as a new assay,
+# and normalize it like RNA data
+seurat[['promoters']] <- CreateAssayObject(counts = gene.activities)
+seurat <- NormalizeData(
+  object = seurat,
+  assay = 'promoters',
+  normalization.method = 'LogNormalize',
+  scale.factor = median(seurat$nCount_promoters)
+)
+
+```
+
+
+# Visualization
+
+We can visualize the data both over genomic regions (chromatin accessibility), and for particular genes (gene expression):
+
+```{r coverage_plots, fig.width = 11, fig.height = 12, message = FALSE}
+
+DefaultAssay(seurat) <- 'peaks'
+CoveragePlot(
+    object = seurat,
+    region = config$genes,
+    features = config$genes,
+    extend.upstream = 1000,
+    extend.downstream = 1000,
+    ncol = 1,
+    expression.assay = "RNA"
+) &
+    suppressWarnings(scale_fill_manual(values = seurat@misc$colours))
+
+```
+
+```{r feature_plots, fig.width = 8, fig.height = 6}
+
+DefaultAssay(seurat) <- 'RNA'
+feature(seurat, config$genes, legend = TRUE, ncol = 2)
+
+```
+
+
+# Cluster markers
+
+To identify cluster markers for each cluster for the specified resolution (`config$clustering_resolution`),
+
+```{r markers, warning = FALSE, message = FALSE}
+
+DefaultAssay(seurat) <- 'RNA'
+cluster_markers <- FindAllMarkers(object = seurat, verbose = FALSE)
+
+# display the top 30 per cluster
+cluster_markers %>%
+  dplyr::group_by(cluster) %>%
+  top_n(n = 30, wt = avg_log2FC) %>%
+  dplyr::select(cluster, gene, everything()) %>%
+  DT::datatable(cluster_markers, filter = "top")
+
+write_tsv(cluster_markers, file.path(out, "cluster_markers.tsv"))
+
+```
+
+```{r marker_heatmap, fig.width = 8, fig.height = 14}
+
+# Display a heatmap of the top 10 per cluster
+top10 <- cluster_markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+DoHeatmap(seurat, features = top10$gene, group.colors = seurat@misc$colours) +
+  NoLegend() +
+  scale_fill_gradientn(colors = c("#2166AC", "#E5E0DC", "#B2182B"))
+
+```
+
+
+
+# Save outputs
+
+The Seurat object now has the following assays (feature x cell matrices)
+
+- `RNA`: gene expression data, *gene x cell* matrix where `@counts` slot represents number of UMIs,
+the `@data` slots is scaled to 10K UMIs per cell and log2-transformed, and the `@scale.data` slot
+is the data after regressing out unwanted sources of variation and z-scoring across cells
+- `SCT`: gene expression data, *gene x cell* matrix produced by `Seurat::SCTransform`,
+where the `@counts` slot represents **corrected** number of UMIs,
+the `@data` slot is the log1p-transformed counts, and the `@scale.data` slot are pearson residuals
+- `ATAC`: chromatin accessibility data, *peak x cell* matrix, with peaks called by Cellranger, and where
+the count represents the number of cut sites
+- `peaks` chromatin accessibility data, *peak x cell* matrix, with peaks called by MACS2, and where
+the count represents the number of cut sites
+- `TF`: chromatin accessibility data, *motif x cell* matrix (see [Cellranger ARC documentation](https://support.10xgenomics.com/single-cell-multiome-atac-gex/software/pipelines/latest/output/analysis#tf)),
+which represents the enrichment of each motif in each cell
+- `promoters`: chromatin accessibility, *gene x cell* matrix where the count
+represents the number of cut sites in each promoter (TSS +/- 2.5kbp)
+
+
+```{r desc_assays}
+
+names(seurat@assays)
+
+```
+
+
+All parameters and filtering metrics are saved both within the seurat
+object in the `seurat@misc` slot, as well as in the output directory.
+
+```{r save_parameters}
+
+# parameters are saved with the Seurat object
+seurat@misc$params$config                <- config
+seurat@misc$filtering_metrics            <- filtering_metrics
+seurat@misc$n_cells                      <- N_cells_metrics
+
+# write metrics/thresholds to file
+filtering_metrics_out <- filtering_metrics %>%
+    gather("metrics_name", "value", -criterion) %>%
+    unite("metrics", criterion:metrics_name, sep = "_") %>%
+    spread("metrics", "value") %>% 
+    bind_cols(N_cells_metrics)
+
+# include the short version of the most recent git repository SHA
+filtering_metrics_out$commit <- git2r::last_commit(params$assets)$sha %>% stringr::str_sub(1, 7)
+write_tsv(filtering_metrics_out, path = file.path(out, "seurat_metrics.tsv"))
+
+```
+
+Save the Seurat object for downstream analysis:
+
+```{r save_seurat}
+
+# Ensure RNA is the default assay
+DefaultAssay(seurat) <- "RNA"
+save(seurat, file = file.path(out, "seurat.Rda"))
+
+```
+
+
+# Warnings
+
+Summary of possible warnings, with issues uncovered in this analysis indicated
+in red:
+
+```{r warn_html, warning = FALSE}
+
+# convert the list to a data frame
+warnings_df <- data.frame(WARNING = names(warnings),
+                          FLAG    = unname(unlist(warnings)))
+
+# if there are any warnings, produce a file
+
+if (any(warnings)) write_tsv(warnings_df %>% filter(FLAG), file.path(out, "warnings.tsv"))
+# generate a visual summary, colouring the warnings in red
+
+warnings_df$FLAG = cell_spec(warnings_df$FLAG, background = ifelse(warnings_df$FLAG, "red", "green"))
+
+warnings_df %>% 
+  kbl(escape = FALSE) %>% 
+  kable_styling(position = "center")
+
+```
+
+
+
+# Reproducibility
+
+This document was last rendered on:
+
+```{r time, echo = FALSE, cache = FALSE}
+
+message(Sys.time())
+
+```
+
+The git repository and last commit:
+
+```{r repo, echo = FALSE, cache = FALSE}
+
+git2r::repository()
+
+```
+
+The R session info:
+
+<details>
+
+```{r sinfo, cache = FALSE, echo = FALSE}
+
+sessionInfo()
+
+```
+

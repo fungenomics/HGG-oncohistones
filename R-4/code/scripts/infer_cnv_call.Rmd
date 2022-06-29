@@ -1,0 +1,204 @@
+---
+title: "Make inferCNV call"
+author: "Selin Jessa"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    theme: flatly
+    toc: yes
+    toc_depth: 4
+    number_sections: true
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = "./",
+                      fig.keep = "all",
+                      dev = "png",
+                      cache.lazy = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+```
+
+# Purpose
+
+This script should be run after the main inferCNV routines (done by the script `infer_cnv.R`).
+
+This script loads the processed Seurat object & inferCNV results, and after manual
+inspection of the inferCNV plots, extracts the barcodes from the inferCNV subtrees,
+and saves the Normal/Malignant calls in an "inferCNV" column of the Seurat object
+metadata. If no normal population is evident, all cells are labeled as Malignant.
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(here)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(ape)
+library(dendextend)
+library(Seurat)
+library(patchwork)
+
+ggplot2::theme_set(ggplot2::theme_minimal())
+source(here("include/style.R"))
+
+here::here()
+
+```
+
+# Wrapper function
+
+```{r wrapper}
+
+# Here's my adapted function from dendextend::get_subdendrograms with the bug fix
+# https://rdrr.io/cran/dendextend/src/R/get_subdendrograms.R
+get_subdendrograms2 <- function(dend, k, ...) {
+    clusters <- cutree(dend, k, ...)
+    dend_list <- lapply(unique(clusters), function(cluster.id) {
+        # !! Added names(clusters)[] here
+        find_dendrogram(dend, names(clusters)[which(clusters == cluster.id)])
+    })
+    class(dend_list) <- "dendlist"
+    dend_list
+}
+
+#' This function loads the inferCNV analysis, and plots
+#' the dendrogram and four subtrees when cutting with k = 3
+plot_subtrees <- function() {
+    
+    dendrogram_path <- "infercnv.observations_dendrogram.txt"
+    
+    # Read in the file from inferCNV
+    dend <- ape::read.tree(file = dendrogram_path)
+    
+    # Conver to hclust
+    hclust_dend <- as.hclust(dend)
+    dend1 <- color_branches(hclust_dend, k = 4)
+    
+    m <- cbind(c(1, 1), c(2, 3), c(4, 5))
+    layout(m)
+    par(mar = c(4, 4, 0, 0))
+    
+    # Plot the whole one
+    plot(dend1, leaflab = "none", horiz = TRUE)
+    
+    # Plot the subtrees
+    dend_list <- get_subdendrograms2(dend1, 4)
+    
+    sapply(dend_list, plot, leaflab = "none", horiz = TRUE)
+    
+    return(list("dend" = dend1,
+                "subdendrograms" = dend_list))
+    
+}
+
+#' This function subclusters a subtree by cutting it into 4 subtrees.
+#' The expected input is a dendrogram, eg x$subdendrograms[[1]] as 
+#' returned by plot_subtrees. Since the result is a list of dendrograms,
+#' it can be called iteratively on the returned value.
+plot_subtrees2 <- function(dend) {
+    
+    m <- cbind(c(1, 1), c(2, 2), c(3, 4), c(5, 6))
+    layout(m)
+    par(mar = c(5, 5, 0, 0))
+    
+    plot(dend, leaflab = "none", horiz = TRUE)
+    
+    dend <- color_branches(dend, k = 4)
+    
+    plot(dend, leaflab = "none", horiz = TRUE)
+    
+    dend_list <- get_subdendrograms2(dend, 4)
+    sapply(dend_list, plot, leaflab = "none", horiz = TRUE)
+    
+    return(dend_list)
+    
+}
+
+```
+
+# Analysis
+
+```{r load_data}
+
+load("../../seurat.Rda")
+
+# indicate the inferCNV run in the seurat@misc slot
+(seurat@misc$inferCNV_run <- basename(getwd()))
+
+```
+
+Show the inferCNV results
+
+![](infercnv.png)
+![](infercnv_custom.png)
+
+Initialize inferCNV column as all malignant.
+
+```{r call_malig}
+
+seurat <- AddMetaData(seurat, metadata = "Malignant", col.name = "inferCNV")
+
+```
+
+In this case, using the inferCNV clustering, we'll annotate the bottom cluster (with k = 2)
+as normal.
+
+```{r call_normal, fig.keep = "none"}
+
+subtrees <- plot_subtrees()
+
+plot(subtrees$subdendrograms[[1]], leaflab = "none", horiz = TRUE)
+plot(subtrees$subdendrograms[[2]], leaflab = "none", horiz = TRUE)
+
+normal_barcodes <- c(labels(subtrees$subdendrograms[[1]]),
+                     labels(subtrees$subdendrograms[[2]]))
+
+length(normal_barcodes)
+
+seurat@meta.data[normal_barcodes, ]$inferCNV <- "Normal"
+
+```
+
+Plot results:
+
+```{r plot_call_umap, fig.width = 14, fig.height = 6}
+
+p1 <- UMAPPlot(seurat, cols = seurat@misc$colours)
+
+p2 <- UMAPPlot(seurat, group.by = "inferCNV",
+               cols = c("Normal" = "gray80", "Malignant" = "red"))
+
+p1 + p2
+
+```
+
+
+Save Seurat object:
+
+```{r save}
+
+# save Seurat object
+save(seurat, file = "../../seurat.Rda")
+
+```
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+sessionInfo()
+
+```

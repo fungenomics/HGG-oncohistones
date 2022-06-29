@@ -1,0 +1,1105 @@
+---
+title: "02 - Consensus tumor cell type projections"
+author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  resources: "NOT SPECIFIED"
+output:
+  html_document:
+    keep_md: yes
+    code_folding: show
+    theme: flatly
+    css: ../../include/style.css
+    toc: yes
+    toc_depth: 3
+    number_sections: true
+    df_print: paged
+    includes:
+      before_body: ../../include/header.html
+      after_body:  ../../include/footer.R4.html
+---
+
+<!-- FRONT MATTER, insert configuration info -->
+
+```{r header, echo = FALSE, results = 'asis', warning = FALSE}
+
+# Index of the document
+# ...determines name of the subfolder of `outputs` and `figures`
+doc_id <- "02"
+
+suppressMessages(library(here))
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "header.R4.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF FRONT MATTER -->
+
+
+# Overview
+
+Derivation of consensus cell type projections for tumors, as shown in Figure 1
+and used throughout the paper.
+
+# Libraries
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# Load libraries here
+library(here)
+library(tidyr)
+library(dplyr)
+library(ggrepel)
+library(ggrastr)
+library(data.table)
+library(readr)
+library(readxl)
+library(glue)
+library(tibble)
+library(ggplot2)
+library(GenomicRanges)
+library(purrr)
+library(feather)
+library(cowplot)
+library(Signac)
+library(Seurat)
+
+source(here("include/style.R"))
+source(here("code/functions/scRNAseq.R"))
+ggplot2::theme_set(theme_min())
+
+```
+
+# Load metadata
+
+```{r, message = FALSE}
+
+meta_sc <- data.table::fread(here("data/metadata/metadata_sc.tsv"), data.table = FALSE)
+
+```
+
+
+# Post-clustering QC of integrated data {.tabset}
+
+For the three tumor types where we performed Harmony integration on malignant cells,
+we'll perform a final step of QC using the clustering in the integrated space to
+identify distinct clusters of neurons, and clusters of proliferating cells.
+
+## H3.3K27M
+
+```{r load_H3.3_seurat, cache = FALSE}
+
+seurat_H3.3 <- get(load(here("R-4/data/integrations/H3.3K27M_malignant/output/seurat_joint.harmony.Rda")))
+seurat_H3.3 %<>% summarize_cell_types.Seurat(cluster_col = "COR_ref.joint_mouse_extended") %>%
+    DietSeurat(counts = TRUE, dimreducs = "umap")
+rm(seurat_joint_harmony)
+
+```
+
+```{r umap_H3.3_neurons, fig.width = 5, fig.height = 5}
+
+umap(seurat_H3.3, label = TRUE, legend = FALSE, point_size = 0.2)
+umap(seurat_H3.3, color_by = "Type", colors = palette_type, label = FALSE, legend = FALSE, point_size = 0.2)
+# feature(seurat_H3.3, "STMN2", point_size = 0.2)
+
+```
+
+
+```{r umap_H3.3_cc, fig.width = 6, fig.height = 5}
+
+umap(seurat_H3.3, color_by = "S.Score", color_by_type = "continuous", colors = ylrd, label = FALSE, point_size = 0.2)
+umap(seurat_H3.3, color_by = "G2M.Score", color_by_type = "continuous", colors = ylrd, label = FALSE, point_size = 0.2)
+umap(seurat_H3.3, color_by = "Phase", label = FALSE, point_size = 0.2)
+rm(seurat_H3.3)
+
+```
+
+No distinct cluster of neurons here to remove.
+
+## H3.1/2K27M
+
+```{r load_H3.12_seurat, cache = FALSE}
+
+seurat_H3.12 <- get(load(here("R-4/data/integrations/H3.12K27M_malignant/output/seurat_joint.harmony.Rda")))
+seurat_H3.12 %<>% summarize_cell_types.Seurat(cluster_col = "COR_ref.joint_mouse_extended") %>%
+    DietSeurat(counts = TRUE, dimreducs = "umap")
+rm(seurat_joint_harmony)
+
+```
+
+```{r umap_H3.12_neurons, fig.width = 5, fig.height = 5}
+
+umap(seurat_H3.12, label = TRUE, legend = FALSE, point_size = 0.2)
+umap(seurat_H3.12, color_by = "Type", colors = palette_type, label = FALSE, legend = FALSE, point_size = 0.2)
+feature(seurat_H3.12, "STMN2", point_size = 0.2)
+
+seurat_neurons_remove_H3.12 <- subset(seurat_H3.12, idents = "10")
+neurons_remove_H3.12 <- seurat_neurons_remove_H3.12@meta.data %>%
+    select(Sample, Technology, Label = Type) %>%
+    tibble::rownames_to_column(var = "cell.barcode") %>%
+    separate(cell.barcode, into = c("cellname", "drop"), sep = "_") %>%
+    mutate(Data = case_when(
+        grepl("Multiome", Technology) ~ "scMultiome",
+        TRUE ~ "scRNAseq"
+    )) %>%
+    select(-drop, -Technology)
+
+# prop of cell types in the cluster
+sort(table(neurons_remove_H3.12$Label)/nrow(neurons_remove_H3.12), decreasing = TRUE)
+
+saveRDS(neurons_remove_H3.12, file = glue("{out}/neurons_remove_H3.12.Rds"))
+
+```
+
+Here, cluster 10 expresses the neuronal marker STMN2, so we will exclude it from malignant cells.
+
+```{r umap_H3.12_cc, fig.width = 6, fig.height = 5}
+
+umap(seurat_H3.12, color_by = "S.Score", color_by_type = "continuous", colors = ylrd, label = FALSE, point_size = 0.2)
+umap(seurat_H3.12, color_by = "G2M.Score", color_by_type = "continuous", colors = ylrd, label = FALSE, point_size = 0.2)
+umap(seurat_H3.12, color_by = "Phase", label = FALSE, point_size = 0.2)
+rm(seurat_H3.12)
+
+```
+
+## PFA
+
+```{r load_PFA_seurat, cache = FALSE}
+
+seurat_PFA <- get(load(here("data/scRNAseq/integrations/PFA_malignant/output/seurat_joint.harmony.Rda")))
+seurat_PFA %<>% summarize_cell_types.Seurat(cluster_col = "COR_ref.joint_mouse_extended") %>%
+    DietSeurat(counts = TRUE, dimreducs = "umap")
+rm(seurat_joint_harmony)
+
+```
+
+```{r umap_PFA_neurons, fig.width = 5, fig.height = 5}
+
+umap(seurat_PFA, label = TRUE, legend = FALSE, point_size = 0.2)
+umap(seurat_PFA, color_by = "Type", colors = palette_type, label = FALSE, legend = FALSE, point_size = 0.2)
+feature(seurat_PFA, "STMN2", point_size = 0.2)
+
+seurat_neurons_remove_PFA <- subset(seurat_PFA, idents = "12")
+neurons_remove_PFA <- seurat_neurons_remove_PFA@meta.data %>%
+    select(Sample, Technology, Label = Type) %>%
+    tibble::rownames_to_column(var = "cell.barcode") %>%
+    separate(cell.barcode, into = c("cellname", "drop"), sep = "_") %>%
+    mutate(Data = case_when(
+        grepl("Multiome", Technology) ~ "scMultiome",
+        TRUE ~ "scRNAseq"
+    )) %>%
+    select(-drop, -Technology)
+
+# prop of cell types in the cluster
+sort(table(neurons_remove_PFA$Label)/nrow(neurons_remove_PFA), decreasing = TRUE)
+
+saveRDS(neurons_remove_PFA, file = glue("{out}/neurons_remove_PFA.Rds"))
+
+```
+
+Here, a subset of cells in cluster 12 expresses the neuronal marker STMN2, so we will exclude it from malignant cells.
+
+```{r umap_PFA_cc, fig.width = 6, fig.height = 5}
+
+umap(seurat_PFA, color_by = "S.Score", color_by_type = "continuous", colors = ylrd, label = FALSE, point_size = 0.2)
+umap(seurat_PFA, color_by = "G2M.Score", color_by_type = "continuous", colors = ylrd, label = FALSE, point_size = 0.2)
+umap(seurat_PFA, color_by = "Phase", label = FALSE, point_size = 0.2)
+rm(seurat_PFA)
+
+```
+
+# Extract samples
+
+```{r extract_samples}
+
+# get all single-cell transcriptome data from scRNAseq or scMultiome
+rna_samples <- c(list.files(here("data/scRNAseq/pipeline_10X/"), full.names = TRUE))
+rna_samples <- rna_samples[!grepl("Makefile", rna_samples)]
+
+rna_seurat_paths <- file.path(rna_samples, "seurat.Rda")
+all(file.exists(rna_seurat_paths))
+write_lines(rna_seurat_paths, glue("{out}/rna_samples.txt"))
+
+multi_samples <- list.files(here("R-4/data/scMultiome/pipeline_10X_Multiome/"), full.names = TRUE)
+multi_samples <- multi_samples[!grepl("Makefile", multi_samples)]
+
+multi_seurat_paths <- file.path(multi_samples, "seurat.Rda")
+all(file.exists(multi_seurat_paths))
+write_lines(multi_seurat_paths, glue("{out}/multiome_samples.txt"))
+
+sc_samples <- c(rna_samples, multi_samples)
+length(sc_samples)
+datatypes_samples <- c(rep("scRNAseq", length(rna_samples)),
+                       rep("scMultiome", length(multi_samples)))
+
+
+```
+
+# Projection pipeline
+
+Each sample was projected to the mouse brain reference atlas using an in-house
+Snakemake-based projection workflow which performs classification using SVM,
+SciBet, and Spearman correlations. The results of that workflow are loaded here.
+
+
+# Analyse projections
+
+## Load results
+
+First, load the cell type predictions, based on multiple methods, from the projections
+pipeline:
+
+```{r load_projections}
+
+projections <- map2_dfr(sc_samples, datatypes_samples, function(i, datatype) {
+    
+    # message("@ ", basename(i))
+    id <- basename(i)
+    path_hydra <- gsub("from_narval", "from_hydra", i)
+    path_hydra <- gsub("public", "stable", path_hydra)
+    
+    # load gene scores file from per-sample cNMF output
+    proj <- data.table::fread(file.path(path_hydra, "prediction_pipeline/Prediction_Summary.tsv"),
+                              data.table = FALSE, header = TRUE) %>% 
+        tibble::add_column("Sample" = basename(i), .before = 1) %>% 
+        tibble::add_column("Data" = datatype, .after = 1)
+    
+    corr <- data.table::fread(file.path(i, "correlations/ref.joint_mouse_extended/correlation.predicted_labels.tsv"),
+                              data.table = FALSE, header = TRUE)
+    
+    # sanity check
+    all(proj$cellnames == corr$cell)
+    
+    proj$Correlation1_Prediction <- corr$celltype
+    
+    return(proj)
+    
+})
+
+dim(projections)
+
+```
+
+Next, we aggregate predictions from each method into the broader cell class
+as used throughout the paper:
+
+```{r aggregate_correlations}
+
+projections_agg <- projections %>% 
+    # Correlations performed in the first pass of cell type projection
+    summarize_cell_types(cluster_col = "Correlation1_Prediction") %>% 
+    dplyr::rename(Correlation1_Type = Type) %>% 
+    # Correlations performed in the with the projection pipeline
+    summarize_cell_types(cluster_col = "Correlation_Prediction") %>% 
+    dplyr::rename(Correlation2_Type = Type) %>% 
+    summarize_cell_types(cluster_col = "SciBet_Pred") %>% 
+    dplyr::rename(SciBet_Type = Type) %>%
+    summarize_cell_types(cluster_col = "SVM_Predictions") %>% 
+    dplyr::rename(SVM_Type = Type)
+
+```
+
+## Projections data-wrangling
+
+Initally, tumor cells were projected to the mouse atlas using the full
+mouse atlas. However, in the prediction pipeline, the reference was downsampled
+for computational tractability. Let's first confirm the correlations-based predictions
+from the pipeline (using the downsampled reference) are consistent with the initial predictions using the same method.
+
+_**NOTE:**_ if samples are profiled by two technologies, the projections from both replicates
+will be combined here.
+
+```{r correlations_concordance, fig.width = 11, fig.height = 8}
+
+p1 <- projections_agg %>% 
+    select(Sample, Correlation1_Prediction, Correlation_Prediction) %>% 
+    rowwise() %>% 
+    mutate(Correlations_equal = ifelse(Correlation1_Prediction == Correlation_Prediction, "TRUE", "FALSE")) %>% 
+    ggplot(aes(x = Sample)) +
+    geom_bar(aes(fill = Correlations_equal), width = 0.5) +
+    scale_fill_manual(values = c("TRUE" = "gray90", "FALSE" = "red")) +
+    rotate_x() +
+    ggtitle("Concordance on granular cell types") +
+    ylab("# cells") +
+    coord_flip() +
+    theme(legend.position = "bottom")
+
+p2 <- projections_agg %>% 
+    select(Sample, Correlation1_Type, Correlation2_Type) %>% 
+    rowwise() %>% 
+    mutate(Correlations_equal = ifelse(Correlation1_Type == Correlation2_Type, "TRUE", "FALSE")) %>% 
+    ggplot(aes(x = Sample)) +
+    geom_bar(aes(fill = Correlations_equal), width = 0.5) +
+    scale_fill_manual(values = c("TRUE" = "gray90", "FALSE" = "red")) +
+    rotate_x() +
+    ggtitle("Concordance on cell classes") +
+    ylab("# cells") +
+    coord_flip() +
+    no_legend()
+
+plot_grid(p1, p2, align = "h", axis = "tb")
+
+# count how many neurons predicted by correlations are supported by both versions
+projections_agg %>% 
+    select(Sample, Correlation1_Type, Correlation2_Type) %>% 
+    rowwise() %>% 
+    mutate(Correlations_equal = ifelse(Correlation1_Type == Correlation2_Type, "TRUE", "FALSE")) %>%
+    filter(Correlation1_Type == "Neurons") %>%
+    pull(Correlations_equal) %>%
+    table()
+
+```
+
+What we want to do is count how many methods support the predictions.
+
+```{r projections_consensus}
+
+projections_agg_long <- projections_agg %>%
+    select(-Correlation1_Type) %>% 
+    pivot_longer(matches("_Type"), names_to = "Method", values_to = "Prediction")
+
+# for each cell, get most common prediction and the number of methods supporting it
+projections_agg_counts <- projections_agg_long %>% 
+    group_by(Sample, Data, cellname, Prediction) %>% 
+    count() %>% 
+    # peel back one layer
+    ungroup(Prediction) %>% 
+    # with_ties = TRUE means that for cells with two predictions equally common will be dropped,
+    # both predictions will be retained
+    slice_max(n, n = 1, with_ties = TRUE)
+
+# if there are cases with multiple equally common predictions, drop them and replace by "Uncertain"2
+n_preds_per_cell <- projections_agg_counts %>% 
+    group_by(Sample, Data, cellname) %>%
+    count()
+
+# these cases will have 3 (a different prediction from each method)
+proj_uncertain <- projections_agg_counts %>% 
+    # right join will filter the cells in projections_agg_counts to those with
+    # more than one equally common prediction
+    right_join(n_preds_per_cell %>% filter(n == 3), by = c("Sample", "Data", "cellname")) %>% 
+    select(-n.x, -n.y, -Prediction) %>% 
+    mutate(Consensus_class = "Uncertain",
+           N_methods = 0, # Uncertain
+           Methods = "Uncertain") %>% 
+    distinct(Sample, Data, cellname, Consensus_class, N_methods, Methods)
+
+proj_certain <- projections_agg_counts %>% 
+    right_join(n_preds_per_cell %>% filter(n == 1), by = c("Sample", "Data", "cellname")) %>% 
+    select(-n.y) %>% 
+    dplyr::rename(Consensus_class = Prediction,
+                  N_methods = n.x)
+
+# for each cell with a confident consensus prediction, get the methods that support the consensus
+proj_certain2 <- projections_agg_long %>%
+    left_join(proj_certain, by = c("Sample", "Data", "cellname")) %>%
+    distinct() %>% 
+    filter(Prediction == Consensus_class) %>%
+    group_by(Sample, Data, cellname, Consensus_class, N_methods) %>%
+    mutate(Method = gsub("_Type", "", Method)) %>% 
+    summarize(Methods = glue_collapse(Method, sep = ","))
+
+projections_agg_consensus <- bind_rows(proj_uncertain,
+                                       proj_certain2) %>% 
+    arrange(Sample, Data, cellname)
+
+# sanity check we have the same # cells/rows
+nrow(projections_agg)
+nrow(projections_agg) == nrow(projections_agg_consensus)
+
+save(projections_agg_long, projections_agg_consensus,
+     file = glue("{out}/projections_aggregated_consensus.Rda"))
+
+table(projections_agg_consensus$Consensus_class)
+
+```
+
+## Evaluate predictions across methods
+
+In this section, we'll evaluate the consensus predictions across _all_ cells (normal,
+malignant).
+
+Which combinations of methods support each predictions?
+
+NOTE: In this figure, all cells are independent, and each column/bar describes
+a specific combination of methods that support a consensus. The combinations are 
+not subsets / unions of the others.
+
+```{r barplot_method_combos, fig.width = 10, fig.height = 8}
+
+# what combos?
+unique(projections_agg_consensus$Methods)
+
+# get order of frequency
+methods_order <- c(setdiff(
+    names(sort(table(projections_agg_consensus$Methods), decreasing = TRUE)), "Uncertain"),
+    "Uncertain")
+
+palette_type2 <- c(palette_type, "Uncertain" = "red")
+
+projections_agg_consensus %>%
+    group_by(Methods) %>%
+    summarize(Prop_of_all_cells = n()/nrow(projections_agg_consensus)) %>% 
+    arrange(desc(Prop_of_all_cells))
+
+projections_agg_consensus %>% 
+    mutate(Methods = factor(Methods, levels = methods_order)) %>% 
+    ggplot(aes(x = Methods)) +
+    geom_bar(aes(fill = Consensus_class), width = 0.5) +
+    scale_fill_manual(values = palette_type2) +
+    rotate_x() +
+    ggtitle("Combinations of methods supporting consensus predictions") +
+    ylab("# cells")
+
+```
+
+
+## Define consensus
+
+Finally, we define the consensus predictions as those where the prediction from the correlations method
+is supported by at least one other. Cells which belong to neuronal clusters identified
+in the Harmony-integrated data are excluded.
+
+```{r final_consensus}
+
+neurons_remove <- bind_rows(neurons_remove_H3.12, neurons_remove_PFA)
+
+projections_agg_consensus_final <- projections_agg %>% 
+    left_join(neurons_remove %>% mutate(Consensus_class = "Normal") %>% select(-Label), by = c("cellname", "Sample", "Data")) %>% 
+    mutate_at(vars(matches("_Type")), as.character) %>% 
+    mutate(
+        Consensus_class = case_when(
+            # Case 1: cells are in the neuronal clusters
+            Consensus_class == "Normal" & cellname %in% neurons_remove$cellname ~ "Normal",
+            # Case 2: prediction from correlations is supported by at least one other method
+            (Correlation1_Type == SciBet_Type) | (Correlation1_Type == SVM_Type) ~ Correlation1_Type,
+            TRUE ~ "Uncertain"
+        ),
+        N_methods = case_when(
+            Consensus_class %in% c("Uncertain", "Normal") ~ 0,
+            (Correlation1_Type == SciBet_Type) & (Correlation1_Type == SVM_Type) ~ 3,
+            TRUE ~ 2
+        )) %>% 
+    select(Sample, Data, cellname, Correlation1_Type, SciBet_Type, SVM_Type, Consensus_class, N_methods)
+
+dim(projections_agg_consensus_final)
+
+save(projections_agg_consensus_final, file = glue("{out}/projections_agg_consensus_final.Rda"))
+
+```
+
+
+
+# Cell-type projections {.tabset}
+
+Next, let's quantify cell type projections in bar-plots, for malignant cells only.
+Uncertain cells, lacking a consensus projection will be shown in gray, while
+cells lacking a consensus and with a high G2/M phase score will be shown in a separate color.
+
+First, we need two functions for (1) summarizing the cell-type projection
+at a higher level, and (2) generating a bar plot to represent cell-type proportions
+within each sample:
+
+<details>
+
+```{r fn_celltype}
+
+# put uncertain cells in gray
+palette_type3 <- c("High G2/M" = "#e65c12", palette_type, "Uncertain" = "gray90")
+
+load_integration <- function(path, key, prediction_filters = quo(TRUE)) {
+    
+    dim  <- readRDS(here(path, glue("{key}/output/dimred.harmony.Rds"))) %>% .$umap
+    
+    meta1 <- readRDS(here(path, glue("{key}/output/metadata.Rds")))
+    
+    if (!("COR_ref.human_fetal_thalamus3" %in% colnames(meta1))) meta1$COR_ref.human_fetal_thalamus3 <- NA
+    if (!("gex_barcode" %in% colnames(meta1))) meta1$gex_barcode <- NA
+    
+    meta <- meta1 %>%
+        dplyr::rename(cellname_object = cell.barcode) %>% 
+        mutate(cellname_object = case_when(
+            is.na(cellname_object) & Technology == "10X Multiome" ~ paste0(orig.ident, "_", gex_barcode),
+            TRUE ~ cellname_object
+        )) %>% 
+        tibble::rownames_to_column(var = "cell.barcode") %>%
+        separate(cell.barcode, into = c("cellname", "drop"), sep = "_") %>%
+        dplyr::select(cellname, cellname_object, Sample, GrowthFactorReceptor, Location, Molecular,
+                      Technology, Malignant_normal_consensus, COR_ref.human_fetal_thalamus3, G2M.Score) %>%
+        cbind(dim) %>%
+        mutate(Data = case_when(
+            grepl("Multiome", Technology) ~ "scMultiome",
+            TRUE ~ "scRNAseq"
+        )) %>%
+        # simplify growth factor mutations
+        mutate(GrowthFactorReceptor = case_when(
+            grepl("ACVR1",  GrowthFactorReceptor) ~ "ACVR1",
+            grepl("PDGFRA", GrowthFactorReceptor) ~ "PDGFRA",
+            grepl("BRAF",   GrowthFactorReceptor) ~ "BRAF",
+            TRUE ~ GrowthFactorReceptor
+        )) %>%
+        inner_join(projections_agg_consensus_final,
+                   by = c("Sample", "Data", "cellname")) %>%
+        mutate(Consensus_class = case_when(
+            Consensus_class == "Uncertain" & G2M.Score > 0.5 ~ "High G2/M",
+            TRUE ~ Consensus_class
+        )) %>% 
+        mutate(Location = ifelse(Location == "Thalamus", "Thal.", Location),
+               Consensus_class = factor(Consensus_class, levels = unique(names(palette_type3)))) %>%
+        filter(!!prediction_filters)
+    
+    return(meta)
+    
+}
+
+plot_umaps <- function(df, size = 0.2) {
+    
+    p1 <- df %>%
+        ggplot(aes(x = UMAP_1, y = UMAP_2)) +
+        rasterize(geom_point(aes(colour = Consensus_class), size = size, alpha = 0.5), dpi = 600) +
+        scale_colour_manual(values = palette_type3) +
+        theme_min() +
+        theme(legend.position = "bottom") +
+        no_ticks()
+    
+    p1
+    
+}
+
+
+plot_cell_type_prop <- function(df) {
+    
+    # calculate # of cells per sample
+    sample_n <- df %>%
+        select(Sample, Malignant_normal_consensus, Consensus_class, Location) %>%
+        filter(Malignant_normal_consensus %in% c("Malignant", "Likely malignant")) %>%
+        group_by(Sample) %>%
+        summarise(n = n())
+    
+    # calculate the proportion of each major cell type among malignant cells of
+    # each sample
+    cell_type_prop <- df %>%
+        select(Sample, Malignant_normal_consensus, Consensus_class, Location) %>%
+        filter(Malignant_normal_consensus %in% c("Malignant", "Likely malignant")) %>%
+        group_by(Sample, Location, Consensus_class) %>%
+        summarise(n = n()) %>%
+        mutate(freq = n / sum(n))
+    
+    # order by certain cell Consensus_classs
+    samples_ordered_epen <- cell_type_prop %>%
+        select(Sample, Consensus_class, freq, Location) %>%
+        spread(Consensus_class, freq) %>%
+        rowwise() %>% 
+        mutate(Ependymal = ifelse(is.na(Ependymal), 0, Ependymal)) %>%
+        arrange(Location, Ependymal, Astrocytes, OPC) %>%
+        pull(Sample)
+    
+    # plot bar chart, ordered by cell Consensus_class
+    p1 <- sample_n %>%
+        mutate(Sample = factor(Sample, levels = samples_ordered_epen)) %>%
+        ggplot(aes(x = Sample, y = n)) +
+        geom_bar(fill = "gray60", stat = "identity", width = 0.8) +
+        rotate_x() +
+        theme(panel.grid = element_blank(),
+              axis.ticks.x = element_blank(),
+              axis.text.x = element_blank()) +
+        xlab(NULL)
+    
+    p2 <- cell_type_prop %>%
+        mutate(Sample = factor(Sample, levels = samples_ordered_epen)) %>%
+        ggplot(aes(x = Sample, y = freq)) +
+        geom_bar(aes(fill = Consensus_class), stat = "identity", width = 0.8) +
+        scale_fill_manual(values = palette_type3) +
+        rotate_x() +
+        ylab("Prop. (malignant cells)") +
+        theme(panel.grid = element_blank(),
+              axis.ticks.x = element_blank())
+    
+    p3 <- df %>%
+        distinct(Sample, GrowthFactorReceptor) %>%
+        mutate(Sample = factor(Sample, levels = samples_ordered_epen)) %>%
+        ggplot(aes(x = Sample, y = 1)) +
+        geom_tile(aes(fill = GrowthFactorReceptor), colour = "white", width = 0.9, height = 0.9) +
+        scale_fill_manual(values = palette_gfr, na.value = "gray90", guide = guide_legend(ncol = 3)) +
+        theme_row() +
+        no_legend()
+    
+    p4 <- df %>%
+        distinct(Sample, Location) %>%
+        mutate(Sample = factor(Sample, levels = samples_ordered_epen)) %>%
+        ggplot(aes(x = Sample, y = 1)) +
+        geom_tile(aes(fill = Location), colour = "white", width = 0.9, height = 0.9) +
+        scale_fill_manual(values = palette_location, na.value = "gray90", guide = guide_legend(ncol = 3)) +
+        theme_row() +
+        no_legend()
+    
+    p_all <- plot_grid(p1, p2, p3, p4, ncol = 1, align = "v", axis = "rl",
+                       rel_heights = c(0.15, 0.55, 0.15, 0.15))
+    
+    return(p_all)
+    
+}
+
+```
+
+</details>
+
+
+### H3.3K27M (malignant cells)
+
+```{r load_H3.3K27M_m, cache = TRUE, dependson = 'fn_celltype'}
+
+meta_H3.3_m <- load_integration("R-4/data/integrations", "H3.3K27M_malignant",
+                                prediction_filters = quo(Consensus_class != "Normal"))
+
+# stats
+length(unique(meta_H3.3_m$Sample))
+table(meta_H3.3_m$Technology)
+nrow(meta_H3.3_m)
+table(meta_H3.3_m$N_methods)
+table(meta_H3.3_m$Consensus_class)
+
+save(meta_H3.3_m, file = glue("{out}/metadata_joint_H3.3_m.Rda"))
+
+```
+
+```{r umap_H3.3K27M_m, fig.width = 3, fig.height = 4, echo_fig = TRUE, dependson = c('load_H3.3K27M_m', 'fn_celltype'), cache = FALSE}
+
+plot_umaps(meta_H3.3_m)
+
+```
+
+```{r bar_H3.3K27M_m, fig.width = 6, fig.height = 8, echo_fig = TRUE, dependson = c('load_H3.3K27M_m', 'fn_celltype'), cache = FALSE}
+
+plot_cell_type_prop(meta_H3.3_m %>% filter(Consensus_class != "Uncertain"))
+
+```
+
+
+### H3.3K27M thalamus (malignant cells)
+
+```{r load_H3.3K27Mth_m, cache = TRUE, dependson = 'fn_celltype'}
+
+meta_H3.3th_m <- load_integration("R-4/data/integrations", "H3.3K27M_thalamus_malignant",
+                                  prediction_filters = quo(Consensus_class != "Normal"))
+
+# stats
+length(unique(meta_H3.3th_m$Sample))
+table(meta_H3.3th_m$Technology)
+nrow(meta_H3.3th_m)
+table(meta_H3.3th_m$N_methods)
+table(meta_H3.3th_m$Consensus_class)
+
+save(meta_H3.3th_m, file = glue("{out}/metadata_joint_H3.3th_m.Rda"))
+
+```
+
+```{r umap_H3.3thK27M_m, fig.width = 3, fig.height = 4, echo_fig = TRUE, dependson = c('load_H3.3thK27M_m', 'fn_celltype'), cache = FALSE}
+
+plot_umaps(meta_H3.3th_m)
+
+```
+
+```{r bar_H3.3thK27M_m, fig.width = 6, fig.height = 8, echo_fig = TRUE, dependson = c('load_H3.3thK27M_m', 'fn_celltype'), cache = FALSE}
+
+plot_cell_type_prop(meta_H3.3th_m %>% filter(Consensus_class != "Uncertain"))
+
+```
+
+
+
+### H3.1/2K27M (malignant cells)
+
+```{r load_H3.12K27M_m, cache = TRUE, dependson = 'fn_celltype'}
+
+meta_H3.12_m <- load_integration("R-4/data/integrations", "H3.12K27M_malignant",
+                                 prediction_filters = quo(Consensus_class != "Normal"))
+
+# stats
+length(unique(meta_H3.12_m$Sample))
+table(meta_H3.12_m$Technology)
+nrow(meta_H3.12_m)
+table(meta_H3.12_m$N_methods)
+table(meta_H3.12_m$Consensus_class)
+
+save(meta_H3.12_m, file = glue("{out}/metadata_joint_H3.12_m.Rda"))
+
+```
+
+```{r umap_H3.12K27M_m, fig.width = 3, fig.height = 4, echo_fig = TRUE, dependson = c('load_H3.12K27M_m', 'fn_celltype'), cache = FALSE}
+
+plot_umaps(meta_H3.12_m)
+
+```
+
+```{r bar_H3.12K27M_m, fig.width = 4, fig.height = 8, echo_fig = TRUE, dependson = c('load_H3.12K27M_m', 'fn_celltype'), cache = FALSE}
+
+plot_cell_type_prop(meta_H3.12_m %>% filter(Consensus_class != "Uncertain"))
+
+```
+
+
+### PFA-EP (malignant cells)
+
+```{r load_PFA_m, cache = TRUE, dependson = 'fn_celltype'}
+
+meta_pfa_m <- load_integration("data/scRNAseq/integrations", "PFA_malignant",
+                               prediction_filters = quo(Consensus_class != "Normal"))
+
+# stats
+length(unique(meta_pfa_m$Sample))
+table(meta_pfa_m$Technology)
+nrow(meta_pfa_m)
+table(meta_pfa_m$N_methods)
+table(meta_pfa_m$Consensus_class)
+
+save(meta_pfa_m, file = glue("{out}/metadata_joint_PFA_m.Rda"))
+
+```
+
+```{r umap_PFA_m, fig.width = 3, fig.height = 4, echo_fig = TRUE, dependson = c('load_PFA_m', 'fn_celltype'), cache = FALSE}
+
+plot_umaps(meta_pfa_m)
+
+```
+
+```{r bar_PFA_m, fig.width = 4, fig.height = 8, echo_fig = TRUE, dependson = c('load_PFA_m', 'fn_celltype'), cache = FALSE}
+
+plot_cell_type_prop(meta_pfa_m %>% filter(Consensus_class != "Uncertain"))
+
+```
+
+Clean up
+
+```{r}
+
+rm(meta_H3.3_m)
+rm(meta_H3.12_m)
+rm(meta_pfa_m)
+
+```
+
+
+# Gene expression levels in tumor scRNAseq
+
+## Load data
+
+Load joint object of malignant cells:
+
+```{r load_tumors, cache = FALSE}
+
+seurat_h31 <- get(load(here("R-4/data/integrations/H3.12K27M_malignant/output/seurat_joint.Rda")))
+rm(seurat_joint)
+
+seurat_h33 <- get(load(here("R-4/data/integrations/H3.3K27M_malignant/output/seurat_joint.Rda")))
+rm(seurat_joint)
+
+seurat_h31_small <- DietSeurat(seurat_h31, data = TRUE, counts = FALSE)
+seurat_h33_small <- DietSeurat(seurat_h33, data = TRUE, counts = FALSE)
+
+rm(seurat_h31)
+rm(seurat_h33)
+
+```
+
+## Expression
+
+A function to plot levels of each gene per sample:
+
+```{r tumor_pct1_boxplots_prep}
+
+expr_data <- bind_rows(FetchData(seurat_h31_small,
+                                 vars = c("NKX6-1", "PAX3", "Sample",
+                                          "Molecular", "Location", "GrowthFactorReceptor", "Technology")),
+                       FetchData(seurat_h33_small,
+                                 vars = c("NKX6-1", "PAX3", "Sample",
+                                          "Molecular", "Location", "GrowthFactorReceptor", "Technology")))
+
+# restrict cells to those with confident predictions
+expr_data_anno <- expr_data %>%
+    tibble::rownames_to_column(var = "cell.barcode") %>%
+    separate(cell.barcode, into = c("cellname", "drop"), sep = "_") %>%
+    dplyr::select(cellname, Sample, GrowthFactorReceptor, Location, Molecular,
+                  Technology, `NKX6-1`, PAX3) %>%
+    mutate(Data = case_when(
+        grepl("Multiome", Technology) ~ "scMultiome",
+        TRUE ~ "scRNAseq"
+    )) %>%
+    inner_join(projections_agg_consensus_final,
+               by = c("Sample", "Data", "cellname")) %>%
+    # filter to cells with projections supported by confident combos
+    filter(!(Consensus_class %in% c("Normal", "Uncertain"))) %>%
+    select(Sample = Sample, Consensus_class, everything())
+
+dim(expr_data_anno)
+table(expr_data_anno$Consensus_class)
+
+saveRDS(expr_data_anno, file = glue("{out}/tumor_scRNA_expr_data.Rds"))
+
+# split by tumor type
+celltype_freq <- expr_data_anno %>%
+    mutate(Molecular = ifelse(Molecular == "H3.2K27M", "H3.1K27M", Molecular)) %>%
+    group_by(Molecular) %>%
+    mutate(N_per_molecular = n()) %>%
+    group_by(Molecular, N_per_molecular, Consensus_class) %>%
+    count() %>%
+    mutate(Freq_per_molecular = n/N_per_molecular) %>%
+    ungroup() %>%
+    select(Molecular, Consensus_class, N = n, Freq = Freq_per_molecular) %>%
+    pivot_wider(names_from = Molecular, values_from = c(N, Freq))
+
+celltype_freq
+
+# filter out cells which represent less than 5% of the dataset
+(celltype_keep_h31 <- celltype_freq %>% filter(Freq_H3.1K27M > 0.05) %>% pull(Consensus_class))
+(celltype_keep_h33 <- celltype_freq %>% filter(Freq_H3.3K27M > 0.05) %>% pull(Consensus_class))
+
+pct1_joint_sample <- expr_data_anno %>%
+    group_by(Molecular, Sample, Consensus_class) %>%
+    # calculate the number of cells of each cell type per sample
+    mutate(n_total = n()) %>%
+    ungroup() %>%
+    gather(Gene, Expression, `NKX6-1`, PAX3) %>%
+    group_by(n_total, Molecular, GrowthFactorReceptor, Location, Sample, Consensus_class, Gene) %>%
+    # count the number of cells of each cell type where each gene is detected
+    summarize(N_detected = sum(Expression > 0)) %>%
+    # divide by the total # of cells in the cell type
+    mutate(pct1 = round(N_detected / n_total, 2)) %>%
+    ungroup() %>%
+    select(-n_total) %>%
+    mutate(Consensus_class = factor(Consensus_class, levels = rev(names(palette_type))))
+
+plot_boxplot_per_sample <- function(df, title, color, label_ACVR1 = FALSE) {
+    
+    if (label_ACVR1) df <- df %>%
+            mutate(ACVR1_simple = case_when(
+                grepl("ACVR1-", GrowthFactorReceptor) ~ "Mutant",
+                TRUE ~ "WT"
+            ))
+    
+    p1 <- df %>%
+        mutate(Gene = factor(Gene, levels = c("NKX6-1", "PAX3"))) %>%
+        complete(Gene, nesting(Consensus_class), fill = list(pct1 = 0)) %>%
+        ggplot(aes(x = Consensus_class, y = pct1)) +
+        geom_boxplot(lwd = 0.25, fill = color, outlier.shape = NA)
+    
+    if (label_ACVR1) {
+        
+        p1 <- p1 +
+            geom_point(aes(shape = ACVR1_simple), stat = "identity", alpha = 0.7) +
+            scale_shape_manual(values = palette_acvr1_simple)
+        
+    } else p1 <- p1 + geom_point(stat = "identity", colour = "black", alpha = 0.7)
+    
+    p1 <- p1 +
+        scale_alpha(guide = FALSE) +
+        facet_wrap(~ Gene, nrow = 1) +
+        coord_flip() +
+        rotate_x() +
+        # no_legend() +
+        ylab("Proportion of cells in which the gene is detected") +
+        ylim(c(0, 1)) +
+        ggtitle(title) +
+        theme(legend.position = "bottom")
+    
+    return(p1)
+    
+}
+
+```
+
+
+Encoding ACVR1 status:
+
+```{r tumor_pct1_boxplots_ACVR1, fig.width = 5, fig.height = 5}
+
+p1 <- plot_boxplot_per_sample(pct1_joint_sample %>%
+                                  filter(Molecular %in% c("H3.1K27M", "H3.2K27M") &
+                                             Location == "Pons" &
+                                             Consensus_class %in% celltype_keep_h31),
+                              title = "H3.1/2K27M Pons",
+                              "orange",
+                              label_ACVR1 = TRUE)
+
+p2 <- plot_boxplot_per_sample(pct1_joint_sample %>%
+                                  filter(Molecular == "H3.3K27M" &
+                                             Location == "Pons" &
+                                             Consensus_class %in% celltype_keep_h33),
+                              title = "H3.3K27M Pons",
+                              "red3",
+                              label_ACVR1 = TRUE)
+
+plot_grid(p1, p2, ncol = 1, align = "h", axis = "tb")
+
+```
+
+
+
+# Validation of tumor cell type projections across species
+
+## Load human fetal thalamus data
+
+```{r hf_thal_data}
+
+hf_thalamus_annotation <- data.table::fread(here("output/01A/hf_thalamus_annotation.tsv"),
+                                            data.table = FALSE)
+
+summarize_cell_types_bhaduri <- function(df, cluster_col) {
+    
+    cc_quo <- rlang::sym(cluster_col)
+    
+    df %>%
+        mutate(
+            # Define some broader cell type classes
+            Type = case_when(
+                grepl("GLIP|OPAS|Glial", !!cc_quo) ~ "Glial progenitors",
+                grepl("RG|[Rr]adial|NSC|prog|Dividing", !!cc_quo) ~ "RGC",
+                grepl("EXIP|INIP|NEURP|IP", !!cc_quo) & !grepl("VIP", !!cc_quo) ~ "Neuronal progenitors",
+                grepl("MGE|CGE|LGE|SST|PV|INH|CEX|PEX|GABAN|NEU|SPN|NRGN|UBCN|MFN|SERN|[Nn]euron", !!cc_quo) ~ "Neurons",
+                grepl("OPC-P|Proliferating OPC", !!cc_quo) ~ "Proliferating OPC",
+                grepl("OPC", !!cc_quo) ~ "OPC",
+                grepl("NFOL|MOL|Oligo", !!cc_quo) ~ "Oligodendrocytes",
+                grepl("ASTR|Astro", !!cc_quo) ~ "Astrocytes",
+                grepl("EPEN|ASEP|Epen", !!cc_quo) ~ "Ependymal",
+                grepl("MGL|MAC|Micro", !!cc_quo) ~ "Immune",
+                grepl("T|Fibr|Mur|Micro|Mixed|UNR|Other|ENDO|PERI|MNG|Endo", !!cc_quo) ~ "Vascular & other",
+                TRUE ~ "Vascular & other")) %>%
+        mutate(Type = factor(Type, levels = c("RGC",
+                                              "Glial progenitors",
+                                              "Proliferating OPC",
+                                              "OPC",
+                                              "Oligodendrocytes",
+                                              "Astrocytes",
+                                              "Ependymal",
+                                              "Neuronal progenitors",
+                                              "Neurons",
+                                              "Immune",
+                                              "Vascular & other",
+                                              "Normal")))
+    
+}
+
+hf_thalamus_info_clusters <- data.table::fread(here("output/01A/info_clusters3.tsv"),
+                                               data.table = FALSE) %>%
+    filter(!grepl("EXCLUDE", ID_20220321)) %>% 
+    summarize_cell_types_bhaduri("ID_20220321") %>%
+    mutate(Label = paste0(Sample, " #", Cluster_number))
+
+```
+
+## Load tumor data
+
+We'll load the combined metadata for all H3.3K27M thalamic samples, restricted to malignant cells:
+
+```{r tumor_meta, dependson = 'hf_thal_data'}
+
+meta_H3.3thal_m <- load_integration("R-4/data/integrations", "H3.3K27M_thalamus_malignant",
+                                    prediction_filters = quo(!(Consensus_class %in% c("Normal", "Uncertain"))))
+
+length(unique(meta_H3.3thal_m$Sample))
+table(meta_H3.3thal_m$Technology)
+nrow(meta_H3.3thal_m)
+table(meta_H3.3thal_m$N_methods)
+table(meta_H3.3thal_m$Consensus_class)
+
+meta_H3.3thal_m <- meta_H3.3thal_m %>%
+    left_join(hf_thalamus_info_clusters %>% select(Cluster, Type), by = c("COR_ref.human_fetal_thalamus3" = "Cluster")) %>%
+    dplyr::rename(Type_human = Type)
+
+# total agreement
+meta_H3.3thal_m %>%
+    mutate(Type_human = as.character(Type_human),
+           Consensus_class = as.character(Consensus_class)) %>%
+    filter(Type_human == Consensus_class) %>% { nrow(.)/nrow(meta_H3.3thal_m) }
+
+```
+
+
+## Mouse vs. human projections
+
+UMAP coloured by human projections:
+
+```{r umap_H3.3thK27M_m_labelled_thalamus, fig.width = 3, fig.height = 4, echo_fig = TRUE}
+
+meta_H3.3thal_m %>% 
+    ggplot(aes(x = UMAP_1, y = UMAP_2)) +
+    rasterize(geom_point(aes(colour = Type_human), size = 0.2, alpha = 0.5), dpi = 600) +
+    scale_colour_manual(values = palette_type3) +
+    theme_min() +
+    theme(legend.position = "bottom") +
+    no_ticks()
+
+```
+
+Plot the agreement as a confusion matrix representing the proportion of each mouse cell
+types that are predicted to human cell types:
+
+```{r confusion_matrix_mouse_human_thalamus, fig.width = 13, fig.height = 6.5}
+
+# encode number of cells as well as proportion of agreement
+p3 <- meta_H3.3thal_m %>%
+    group_by(Consensus_class) %>%
+    mutate(Total_per_class_mouse = n()) %>%
+    group_by(Consensus_class, Total_per_class_mouse, Type_human) %>%
+    count() %>%
+    mutate(Prop = n/Total_per_class_mouse) %>%
+    mutate(Type_human = factor(Type_human, levels = setdiff(names(palette_type), "Normal")),
+           Consensus_class = factor(Consensus_class, levels = rev(setdiff(names(palette_type), "Normal")))) %>%
+    ungroup() %>%
+    complete(Consensus_class, Type_human, fill = list(Prop = 0)) %>%
+    filter(Consensus_class != "Uncertain" & Type_human != "Uncertain") %>%
+    ggplot(aes(x = Type_human, y = Consensus_class)) +
+    geom_point(aes(colour = Prop, size = n)) +
+    scale_colour_gradientn(colors = colorRampPalette(c("gray90", "red"))(n=100), limits = c(0, 1)) +
+    scale_size_area(breaks = seq(2000, 10000, by = 2000), max_size = 10) +
+    geom_text(aes(label = round(Prop, 2)), colour = "black", size = 3) +
+    scale_x_discrete(position = "top") +
+    theme_min() +
+    theme(panel.border = element_blank()) +
+    rotate_x() +
+    theme(axis.text.x = element_text(hjust = 0)) +
+    ggtitle("Proportion of cells (labelled by mouse) \nprojected to each human cell class") +
+    xlab("Human") + ylab("Mouse")
+
+p4 <- meta_H3.3thal_m %>%
+    group_by(Type_human) %>%
+    mutate(Total_per_class_human = n()) %>%
+    group_by(Type_human, Total_per_class_human, Consensus_class) %>%
+    count() %>%
+    mutate(Prop = n/Total_per_class_human) %>%
+    mutate(Type_human = factor(Type_human, levels = rev(setdiff(names(palette_type), "Normal"))),
+           Consensus_class = factor(Consensus_class, levels = setdiff(names(palette_type), "Normal"))) %>%
+    ungroup() %>%
+    complete(Consensus_class, Type_human, fill = list(Prop = 0)) %>%
+    filter(Consensus_class != "Uncertain" & Type_human != "Uncertain") %>%
+    ggplot(aes(x = Consensus_class, y = Type_human)) +
+    geom_point(aes(colour = Prop, size = n)) +
+    scale_colour_gradientn(colors = colorRampPalette(c("gray90", "red"))(n=100), limits = c(0, 1)) +
+    scale_size_area(breaks = seq(2000, 10000, by = 2000), max_size = 10) +
+    geom_text(aes(label = round(Prop, 2)), colour = "black", size = 3) +
+    scale_x_discrete(position = "top") +
+    theme_min() +
+    theme(panel.border = element_blank()) +
+    rotate_x() +
+    theme(axis.text.x = element_text(hjust = 0)) +
+    ggtitle("Proportion of cells (labelled by human) \nprojected to each mouse cell class") +
+    xlab("Mouse") + ylab("Human")
+
+plot_grid(p3, p4, ncol = 2)
+
+```
+
+
+<!-- END MATTER, insert reproducibility info -->
+
+```{r footer, echo = FALSE, results = 'asis', warning = FALSE, cache = FALSE}
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "footer.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF END MATTER -->
