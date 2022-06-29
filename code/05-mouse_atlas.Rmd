@@ -1,0 +1,332 @@
+---
+title: "05 - Summary figures for extended mouse atlas"
+author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  resources: "NOT SPECIFIED"
+output:
+  html_document:
+    keep_md: yes
+    code_folding: show
+    theme: flatly
+    css: ../include/style.css
+    toc: yes
+    toc_depth: 4
+    number_sections: true
+    df_print: paged 
+    includes:
+      before_body: ../include/header.html
+      after_body:  ../include/footer.html
+---
+
+<!-- FRONT MATTER, insert configuration info -->
+
+```{r header, echo = FALSE, results = 'asis', warning = FALSE}
+
+# Index of the document
+# ...determines name of the subfolder of `outputs` and `figures`
+doc_id <- "05"
+
+suppressMessages(library(here))
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "header.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF FRONT MATTER -->
+
+
+# Overview
+
+This document summarizes the extended mouse scRNAseq developmental atlas and generates
+the dendrograms over single-cell clusters for each brain region, as shown in 
+Extended Data Figure 1.
+
+# Libraries
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# Load libraries here
+library(here)
+library(tidyr)
+library(dplyr)
+library(readr)
+library(readxl)
+library(glue)
+library(purrr)
+library(pvclust)
+library(ggplot2)
+library(ggrepel)
+library(cowplot)
+library(dendextend)
+library(ggrastr)
+library(Seurat)
+
+source(here("include/style.R"))
+source(here("code/functions/scRNAseq.R"))
+ggplot2::theme_set(theme_min())
+
+# set seed to reproduce earlier analysis
+set.seed(23)
+
+```
+
+# Load data
+
+```{r atlas_setup}
+
+atlas_path <- read_lines(here("data/scRNAseq/references/mouse_atlas_extended/atlas_path_hydra.tsv"))
+
+mean_expression_profile <- readRDS(file.path(atlas_path, "data/joint_mouse_extended/mean_expression_per_cluster.Rds"))
+
+cluster_signatures <- readRDS(file.path(atlas_path, "data/joint_mouse_extended/joint_mouse_extended.signatures_ID_20210710.Rds"))
+
+mouse_signatures <- cluster_signatures$mm_sym
+
+```
+
+
+
+# Compute dendrograms
+
+Compute dendrograms based on correlation between mean transcriptome of each cluster:
+
+```{r generate_dend}
+
+# get the unique signature genes from mouse only
+atlas_unique_genes_mm <- mouse_signatures %>% unlist %>% unique
+f_signatures <- mouse_signatures[grepl("F-", names(mouse_signatures))] %>% unlist %>% unique
+p_signatures <- mouse_signatures[grepl("P-.+_", names(mouse_signatures))] %>% unlist %>% unique
+
+meanexp_mm_uniq <- mean_expression_profile[atlas_unique_genes_mm] 
+rownames(meanexp_mm_uniq) <- mean_expression_profile$ID_20210710
+
+# subset the gene signatures to the clusters used in the dendrogram
+meanexp_f_uniq <- meanexp_mm_uniq %>% filter(grepl("F-", rownames(meanexp_mm_uniq))) %>% .[f_signatures]
+meanexp_p_uniq <- meanexp_mm_uniq %>% filter(grepl("P-.+_", rownames(meanexp_mm_uniq))) %>% .[p_signatures]
+
+# transpose
+meanexp_f_uniq <- as.data.frame(t(meanexp_f_uniq))
+meanexp_p_uniq <- as.data.frame(t(meanexp_p_uniq))
+
+# take correlations
+cor_f <- cor(meanexp_f_uniq, meanexp_f_uniq, method = "spearman", use = "complete.obs")
+cor_p <- cor(meanexp_p_uniq, meanexp_p_uniq, method = "spearman", use = "complete.obs")
+
+# remove NAs
+meanexp_f_uniq_no_NA <- meanexp_f_uniq
+meanexp_f_uniq_no_NA[is.na(meanexp_f_uniq_no_NA)] <- 0
+
+meanexp_p_uniq_no_NA <- meanexp_p_uniq
+meanexp_p_uniq_no_NA[is.na(meanexp_p_uniq_no_NA)] <- 0
+
+result_f <- pvclust(meanexp_f_uniq_no_NA, method.dist = spearman,
+                    method.hclust = "complete", nboot = 100)
+
+result_p <- pvclust(meanexp_p_uniq_no_NA, method.dist = spearman,
+                    method.hclust = "complete", nboot = 100)
+
+```
+
+
+```{r plot_dend, fig.width = 20, fig.height = 5}
+
+dend_f <- as.dendrogram(result_f)
+dend_order_f <- colnames(cor_f)[order.dendrogram(dend_f)]
+
+dend_p <- as.dendrogram(result_p)
+dend_order_p <- colnames(cor_p)[order.dendrogram(dend_p)]
+
+saveRDS(dend_order_f,
+        file = glue("{out}/dendrogram_order_joint_extended_forebrain.Rds"))
+saveRDS(dend_order_p,
+        file = glue("{out}/dendrogram_order_joint_extended_pons.Rds"))
+
+f_palette <- palette_joint_mouse_extended_full[dend_order_f]
+p_palette <- palette_joint_mouse_extended_full[dend_order_p]
+
+dend_f <- dend_f %>% set("labels_col", f_palette) %>% set("labels_cex", 0.3)
+dend_p <- dend_p %>% set("labels_col", p_palette) %>% set("labels_cex", 0.3)
+
+par(mar = c(20,2,2,2))
+plot(dend_f)
+plot(dend_p)
+dev.off()
+
+```
+
+
+
+
+# Generate tables
+
+Per-sample data:
+
+```{r table_atlas}
+
+mouse_new_sample_qc <- read_xlsx(here("data/scRNAseq/references/mouse_atlas_extended/new_timepoints_stats.xlsx"))
+
+mouse_sample_summary <- read_xlsx(here("data/metadata/2021-10-20_Omega_table-singlecell.xlsx")) %>% 
+    filter(Diagnosis_1 == "Normal Mouse Brain") %>% 
+    filter(!(Sample %in% c("PT_CT_0F", "fresh_mouse_brain_E18"))) %>% 
+    left_join(mouse_new_sample_qc, by = c("Aliases" = "Alias")) %>% 
+    rename(Alias = Aliases)
+
+# get QC stats after filtering
+mouse_sample_qc_after_filt <- map_dfr(mouse_sample_summary$Alias,
+         ~ data.table::fread(glue("{atlas_path}/data/{.x}/{.x}.metadata.tsv"), data.table = FALSE) %>%
+             group_by(alias) %>% 
+             summarise_at(.vars = c("nCount_RNA", "nFeature_RNA"), .funs = mean)
+         )
+
+mouse_sample_summary_with_qc <- mouse_sample_summary %>%
+    left_join(mouse_sample_qc_after_filt, by = c("Alias" = "alias")) %>% 
+    select(Path, Original_sample = Sample, Alias, Protocol, Publication,
+           Kit = `kit version`, Species, Age, Location,
+           Starting_material = `Starting material`,
+           N_reads = `Number of reads`,
+           Reads_mapped_to_genome = `Reads mapped to genome`,
+           Reads_mapped_to_transcriptome = `Reads mapped to transcriptome`,
+           N_cells_estimated = `Estimated number of cells`,
+           N_cells_after_filtering = `number of cells post-filtering`,
+           Mean_UMIs_after_filtering = nCount_RNA,
+           Mean_N_genes_after_filtering = nFeature_RNA,
+           Min_cells_threshold = min_cells,
+           Min_N_genes_threshold = min_nGene,
+           Max_N_genes_threshold = max_nGene,
+           Min_UMIs_threshold = min_nUMI,
+           Max_UMIs_threshold = max_nUMI,
+           Number_of_PCs = `number of PCs`,
+           Clustering_resolution = `clustering resolution`) %>% 
+    mutate(Publication = ifelse(is.na(Publication), "This study", Publication)) %>% 
+    arrange(Publication, Age, Location)
+
+mouse_sample_summary_with_qc %>%
+    rr_write_tsv(glue("{out}/TABLE_mouse_sample_info.tsv"),
+                 "Sample info and QC stats for mouse brain samples")
+
+```
+
+Per-cluster data:
+
+```{r mouse_info_clusters}
+
+mouse_info_clusters <- data.table::fread(file.path(atlas_path, "data/metadata_extended/metadata_20210710_with_qc.tsv"), data.table = FALSE) %>% 
+    left_join(mouse_sample_summary %>% select(Original_sample = Sample, Alias), by = "Alias") %>% 
+    select(Sample, Original_sample, Alias, everything())
+
+# sanity check that all the signatures are in the table
+all(names(cluster_signatures$mm_sym) %in% mouse_info_clusters$Label)
+
+# now, add the signatures for each cluster to the table
+cluster_signatures_df <- data.frame("Signature_mm_symbols" = map_chr(cluster_signatures$mm_sym, ~ glue_collapse(.x, sep = ",")),
+                                    "Signature_mm_ensembl" = map_chr(cluster_signatures$mm_ens, ~ glue_collapse(.x, sep = ",")),
+                                    "Signature_hg_symbols" = map_chr(cluster_signatures$hg_sym, ~ glue_collapse(.x, sep = ",")),
+                                    "Signature_hg_ensembl" = map_chr(cluster_signatures$hg_ens, ~ glue_collapse(.x, sep = ","))) %>% 
+    tibble::rownames_to_column(var = "Label")
+
+mouse_info_clusters_with_sigs <- mouse_info_clusters %>% 
+    left_join(cluster_signatures_df, by = "Label")
+
+# add cell class
+# mouse_info_clusters_with_sigs_class <- mouse_info_clusters_with_sigs %>% 
+#     summarize_cell_types("Level4_short") %>% 
+#     rename(Cell_ontological_class = Type) %>% 
+#     relocate(Cell_ontological_class, .before = "Level1_type")
+
+# add dend order
+mouse_info_clusters_with_sigs_class_dend <- mouse_info_clusters_with_sigs %>% 
+    left_join(data.frame("Label" = dend_order_f) %>%
+                  tibble::rowid_to_column(var = "Dendrogram_order_forebrain")) %>% 
+    left_join(data.frame("Label" = dend_order_p) %>%
+                  tibble::rowid_to_column(var = "Dendrogram_order_pons")) %>% 
+    relocate(Dendrogram_order_forebrain, Dendrogram_order_pons, .after = Exclude)
+
+mouse_info_clusters_with_sigs_class_dend %>%
+    rr_write_tsv(glue("{out}/TABLE_mouse_cluster_info.tsv"),
+                 "Cluster info, QC stats, signatures, and dendrogram order for each mouse brain single-cell cluster")
+
+```
+
+
+# Supplementary figures
+
+Generate annotations for the dendrograms:
+
+```{r dend_f_anno, fig.width = 20, fig.height = 3}
+
+anno_dend_f <- mouse_info_clusters_with_sigs_class_dend %>% 
+    select(Label, Dendrogram_order_forebrain, Timepoint) %>% 
+    filter(!is.na(Dendrogram_order_forebrain)) %>% 
+    arrange(Dendrogram_order_forebrain) %>% 
+    mutate(Label = factor(Label, levels = .$Label))
+
+anno_dend_f %>% 
+    ggplot(aes(x = Label, y = 1)) +
+    geom_tile(aes(fill = Timepoint), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = palette_timepoint) +
+    theme_min() +
+    theme(panel.border = element_blank(),
+          axis.text.y = element_blank(),
+          axis.title.y = element_blank(),
+          axis.ticks = element_blank()) +
+    rotate_x()
+
+```
+
+```{r dend_p_anno, fig.width = 20, fig.height = 3}
+
+anno_dend_p <- mouse_info_clusters_with_sigs_class_dend %>% 
+    select(Label, Dendrogram_order_pons, Timepoint) %>% 
+    filter(!is.na(Dendrogram_order_pons)) %>% 
+    arrange(Dendrogram_order_pons) %>% 
+    mutate(Label = factor(Label, levels = .$Label))
+
+anno_dend_p %>% 
+    ggplot(aes(x = Label, y = 1)) +
+    geom_tile(aes(fill = Timepoint), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = palette_timepoint) +
+    theme_min() +
+    theme(panel.border = element_blank(),
+          axis.text.y = element_blank(),
+          axis.title.y = element_blank(),
+          axis.ticks = element_blank()) +
+    rotate_x()
+
+```
+
+Plot the # cells per sample:
+
+```{r barplot_n_cells, fig.wdith = 8, fig.height = 5}
+
+joint_mouse_meta <- readRDS(file.path(atlas_path,
+                                      "2020-10_analyze_extended_dataset/integration_joint_mouse_extended/output/metadata.Rds"))
+
+joint_mouse_meta %>% 
+    separate(Sample, into = c("Location2", "Timepoint"), sep = " ") %>% 
+    group_by(Timepoint, Location) %>% 
+    count() %>% 
+    ggplot(aes(x = Timepoint, y = n)) +
+    geom_col(aes(fill = Timepoint), width = 0.5) +
+    facet_wrap(~ Location) +
+    geom_text(aes(label = n),  angle = 90, size = 4, hjust = -0.05) +
+    scale_fill_manual(values = palette_timepoint) +
+    rotate_x() +
+    ylim(c(0, 13000))
+
+```
+
+
+<!-- END MATTER, insert reproducibility info -->
+
+```{r footer, echo = FALSE, results = 'asis', warning = FALSE, cache = FALSE}
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "footer.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF END MATTER -->

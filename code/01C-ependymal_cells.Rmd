@@ -1,0 +1,602 @@
+---
+title: "01C - Confirmation of malignant ependymal cells"
+author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  resources: "NOT SPECIFIED"
+output:
+  html_document:
+    keep_md: yes
+    code_folding: show
+    theme: flatly
+    css: ../include/style.css
+    toc: yes
+    toc_depth: 4
+    number_sections: true
+    df_print: paged
+    includes:
+      before_body: ../include/header.html
+      after_body:  ../include/footer.html
+---
+
+<!-- FRONT MATTER, insert configuration info -->
+
+```{r header, echo = FALSE, results = 'asis', warning = FALSE}
+
+# Index of the document
+# ...determines name of the subfolder of `outputs` and `figures`
+doc_id <- "01C"
+
+suppressMessages(library(here))
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "header.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF FRONT MATTER -->
+
+
+# Overview
+
+In this document, we confirm the identity of the cells projected to be
+ependymal-like based on the automated cell-type projections. This is done by scoring
+cells for other features (e.g. expression of the ependymal transcription FOXJ1 and its targets,
+re-examining the cNMF programs, and re-examining the inferCNV output).
+
+# Libraries
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# Load libraries here
+library(biomaRt)
+library(here)
+library(tidyr)
+library(dplyr)
+library(ggrepel)
+library(readr)
+library(readxl)
+library(glue)
+library(tibble)
+library(ggplot2)
+library(purrr)
+library(cowplot)
+library(Seurat)
+library(ggrastr)
+library(pheatmap)
+
+source(here("include/style.R"))
+source(here("code/functions/scRNAseq.R"))
+source(here("code/functions/ssGSEA.R"))
+source(here("code/functions/RNAseq.R"))
+ggplot2::theme_set(theme_min())
+
+```
+
+
+# Load data
+
+```{r epen_samples}
+
+# select samples to interrogate further
+high_epen <- c("P-6292_S-8579", # PFA
+               "P-6251_S-8496", # H3.1K27M
+               "P-1713_S-1713", # H3.1K27M
+               "P-6255_S-8500") # H3.1K27M
+
+```
+
+Load data:
+
+```{r load_epen, cache = FALSE}
+
+seurat_list <- list()
+
+for (i in seq_along(high_epen)) {
+    
+    seurat <- get(load(here(
+        file.path("data/scRNAseq/pipeline_10X/", high_epen[i], "seurat.Rda")
+    )))
+    
+    seurat$Type_malig <- seurat@meta.data %>%
+        mutate(Type_malig = case_when(
+            Malignant_normal_consensus_Jessa2022 == "Normal" ~ "Normal",
+            TRUE ~ as.character(Cell_type_consensus_Jessa2022)
+        ),
+        Type_malig = factor(Type_malig, levels = c(names(palette_type), "Uncertain"))) %>% 
+        pull(Type_malig)
+    
+    seurat$Type_malig_inferCNV <- seurat@meta.data %>%
+        dplyr::select(COR_ref.joint_mouse_extended, inferCNV) %>%
+        summarize_cell_types("COR_ref.joint_mouse_extended") %>% 
+        mutate(Type_malig_inferCNV = case_when(
+            inferCNV == "Normal" ~ "Normal",
+            TRUE ~ as.character(Type)
+        ),
+        Type_malig_inferCNV = factor(Type_malig_inferCNV, levels = names(palette_type))) %>% 
+        pull(Type_malig_inferCNV)
+    
+    seurat$Ependymal_binary <- seurat@meta.data %>%
+        dplyr::select(COR_ref.joint_mouse_extended, inferCNV) %>%
+        summarize_cell_types("COR_ref.joint_mouse_extended") %>% 
+        mutate(Epen = ifelse(Type == "Ependymal", "Ependymal", "Other")) %>% 
+        pull(Epen)
+    
+    seurat_list[[i]] <- seurat
+    
+}
+
+names(seurat_list) <- high_epen
+
+```
+
+
+# Cell-type projections
+
+Examine the cell-type projections in the space of each individual sample:
+
+## By correlations
+
+First, plot the cell type projections for malignant cells within each sample:
+
+```{r projections, fig.width = 12, fig.height = 3}
+
+imap(seurat_list, function(object, id) {
+    
+    p1 <- FetchData(subset(object, subset = Malignant_normal_consensus_Jessa2022 == "Malignant"),
+                    c("UMAP_1", "UMAP_2", "Type_malig")) %>% 
+        ggplot(aes(x = UMAP_1, y = UMAP_2)) +
+        rasterize(geom_point(aes(colour = Type_malig), size = 0.5, alpha = 0.5), dpi = 500) +
+        scale_colour_manual(values = c(palette_type, "Uncertain" = "gray90")) +
+        theme_min() +
+        no_legend() +
+        no_ticks() +
+        ggtitle(id)
+    
+    return(p1)
+    
+}) %>%
+    {plot_grid(plotlist = ., ncol = 4, align = "h", axis = "tb")}
+
+# based on the inferCNV call only
+imap(seurat_list, function(object, id) {
+    
+    p1 <- FetchData(object, c("UMAP_1", "UMAP_2", "Type_malig_inferCNV")) %>% 
+        ggplot(aes(x = UMAP_1, y = UMAP_2)) +
+        rasterize(geom_point(aes(colour = Type_malig_inferCNV), size = 0.5, alpha = 0.5), dpi = 500) +
+        scale_colour_manual(values = palette_type) +
+        theme_min() +
+        no_legend() +
+        no_ticks() +
+        ggtitle(id)
+    
+    return(p1)
+    
+}) %>%
+    {plot_grid(plotlist = ., ncol = 4, align = "h", axis = "tb")}
+
+```
+
+
+
+# Gene expression
+
+Next, let's examine genes canonically or functionally associated with ependymal cells:
+
+```{r feature_plots, fig.width = 12, fig.height = 3.6}
+
+feature_plots_foxj1 <- imap(seurat_list, function(object, id) {
+    
+    p1 <- FetchData(object, c("UMAP_1", "UMAP_2", "FOXJ1")) %>% 
+        arrange(FOXJ1) %>% 
+        ggplot(aes(x = UMAP_1, y = UMAP_2)) +
+        rasterize(geom_point(aes(colour = FOXJ1), size = 0.5, alpha = 0.5), dpi = 500) +
+        scale_colour_gradientn(colours = gryrd) +
+        theme_min() +
+        theme(legend.position = "bottom") +
+        no_ticks() +
+        ggtitle(id)
+    
+    return(p1)
+    
+})
+
+plot_grid(plotlist = feature_plots_foxj1, ncol = 4, align = "h", axis = "tb")
+
+feature_plots_dnah <- imap(seurat_list, function(object, id) {
+    
+    p1 <- FetchData(object, c("UMAP_1", "UMAP_2", "DNAH12")) %>% 
+        arrange(DNAH12) %>% 
+        ggplot(aes(x = UMAP_1, y = UMAP_2)) +
+        rasterize(geom_point(aes(colour = DNAH12), size = 0.5, alpha = 0.5), dpi = 500) +
+        scale_colour_gradientn(colours = gryrd) +
+        theme_min() +
+        theme(legend.position = "bottom") +
+        no_ticks() +
+        ggtitle(id)
+    
+    return(p1)
+    
+})
+
+plot_grid(plotlist = feature_plots_dnah, ncol = 4, align = "h", axis = "tb")
+
+```
+
+
+# FOXJ1 targets
+
+We can also directly assess the expression/enrichment of FOXJ1 target genes in these tumors.
+
+Load a list of Foxj1 targets from [Jacquet et al, 2009](https://pubmed.ncbi.nlm.nih.gov/19906869/):
+
+```{r read_foxj1, eval = FALSE}
+
+foxj1_targets <- read_xlsx(here("data/misc/Jacquet2009_TableS1_Foxj1_targets.xlsx"))
+head(foxj1_targets)
+
+table(foxj1_targets$Category)
+
+human  <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+mouse  <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+genes2 <- getLDS(attributes = c("mgi_symbol"),
+                 filters = "mgi_symbol",
+                 values = foxj1_targets$Gene ,
+                 mart = mouse,
+                 attributesL = c("hgnc_symbol"),
+                 martL = human,
+                 uniqueRows = TRUE)
+
+foxj1_targets_hg <- unique(genes2[, 2])
+saveRDS(foxj1_targets_hg, file = glue("{out}/FOXJ1_targets_hg.Rds"))
+
+```
+
+```{r read_foxj12}
+
+foxj1_targets_hg <- readRDS(glue("{out}/FOXJ1_targets_hg.Rds"))
+
+```
+
+## Gene set enrichment
+
+For each sample, compute the ssGSEA enrichment of this target in the single cells:
+
+```{r foxj1_ssgsea_run, message = FALSE}
+
+seurat_list <- map(seurat_list, function(seurat) {
+    
+    # run ssGSEA, then extract the vector of scores
+    scores <- compute_scores_sc(seurat, genelists = list("FOXJ1_targets" = foxj1_targets_hg)) %>% 
+        .[, -1] %>% t() %>% .[, 1]
+    
+    seurat$FOXJ1_targets <- scores
+    return(seurat)
+    
+})
+
+```
+
+Plot results:
+
+```{r foxj1_ssgsea_plot, fig.width = 12, fig.height = 3.6}
+
+feature_plots_foxj1_targets <- imap(seurat_list, function(object, id) {
+    
+    p1 <- FetchData(object, c("UMAP_1", "UMAP_2", "FOXJ1_targets")) %>% 
+        arrange(FOXJ1_targets) %>% 
+        ggplot(aes(x = UMAP_1, y = UMAP_2)) +
+        rasterize(geom_point(aes(colour = FOXJ1_targets), size = 0.5, alpha = 0.5), dpi = 500) +
+        scale_colour_gradientn(colours = rdbu) +
+        theme_min() +
+        theme(legend.position = "bottom") +
+        no_ticks() +
+        ggtitle(id)
+    
+    return(p1)
+    
+})
+
+plot_grid(plotlist = feature_plots_foxj1_targets, ncol = 4, align = "h", axis = "tb")
+
+```
+
+
+# cNMF
+
+In the two H3.1K27M samples with high ependymal content, cNMF independently
+identified a gene program among malignant cells which is most highly
+activate in these ependymal-like cells:
+
+```{r cnmf, fig.width = 6, fig.height = 3.5}
+
+p1 <- FetchData(seurat_list[[2]], c("UMAP_1", "UMAP_2", "cNMF_program_malignant_1")) %>%
+    dplyr::rename(NMF_score = cNMF_program_malignant_1) %>%
+    arrange(NMF_score) %>%
+    ggplot(aes(x = UMAP_1, y = UMAP_2)) +
+    rasterize(geom_point(aes(colour = NMF_score), size = 0.5, alpha = 0.5), dpi = 500) +
+    scale_colour_gradientn(colours = rdbu, na.value = "gray90") +
+    theme_min() +
+    theme(legend.position = "bottom") +
+    no_ticks()
+
+p2 <- FetchData(seurat_list[[3]], c("UMAP_1", "UMAP_2", "cNMF_program_malignant_3")) %>%
+    dplyr::rename(NMF_score = cNMF_program_malignant_3) %>%
+    arrange(NMF_score) %>%
+    ggplot(aes(x = UMAP_1, y = UMAP_2)) +
+    rasterize(geom_point(aes(colour = NMF_score), size = 0.5, alpha = 0.5), dpi = 500) +
+    scale_colour_gradientn(colours = rdbu, na.value = "gray90") +
+    theme_min() +
+    theme(legend.position = "bottom") +
+    no_ticks()
+
+plot_grid(p1, p2, ncol = 2, align = "h", axis = "tb")
+
+```
+
+For each of those, we can also load the top genes for that program and plot their scores:
+
+```{r plot_cnmf_genes}
+
+cnmf_top_genes <- readRDS(here("R-4/output/01/cNMF_top_genes.malignant.Rds"))
+
+plot_gene_scores <- function(scores, ...) {
+
+    scores %>%
+        tibble::column_to_rownames(var = "Program") %>%
+        t() %>%
+        set_colnames(1:ncol(.)) %>%
+        pheatmap(color = head(rdbu, 80),
+                 border_color = NA,
+                 scale = "row",
+                 cluster_rows = FALSE,
+                 cluster_cols = FALSE,
+                 show_colnames = TRUE,
+                 show_rownames = TRUE,
+                 fontsize_row = 5,
+                 fontsize_col = 10,
+                 cellwidth = 15,
+                 cellheight = 5,
+                 ...)
+
+}
+
+```
+
+<details>
+
+For the first sample:
+
+```{r s1_cnmf_hm}
+
+gene_scores1 <- get_cnmf_gene_scores(
+    path_to_sample = here(file.path("data/scRNAseq/pipeline_10X/", "P-6251_S-8496")),
+    output_dir = "output_ngenes2000_niter100_malignant",
+    program_string = "_cNMF_program_malignant_",
+    genes_keep = cnmf_top_genes[["P-6251_S-8496_cNMF_program_malignant_1"]])
+
+# large version with gene names; display that one
+plot_gene_scores(gene_scores1, filename = glue("{figout}/cNMF_P-6251_S-8496_hm.png"))
+
+plot_gene_scores(gene_scores1, filename = glue("{figout}/cNMF_P-6251_S-8496_hm.pdf"))
+
+knitr::include_graphics(glue("{figout}/cNMF_P-6251_S-8496_hm.png"))
+
+```
+
+For the second sample:
+
+```{r s2_cnmf_hm}
+
+gene_scores2 <- get_cnmf_gene_scores(
+    path_to_sample = here(file.path("data/scRNAseq/pipeline_10X/", "P-1713_S-1713")),
+    output_dir = "output_ngenes2000_niter100_malignant",
+    program_string = "_cNMF_program_malignant_",
+    genes_keep = cnmf_top_genes[["P-1713_S-1713_cNMF_program_malignant_3"]])
+
+plot_gene_scores(gene_scores2, filename = glue("{figout}/cNMF_P-1713_S-1713_hm.png"))
+
+plot_gene_scores(gene_scores2, filename = glue("{figout}/cNMF_P-1713_S-1713_hm.pdf"))
+
+knitr::include_graphics(glue("{figout}/cNMF_P-1713_S-1713_hm.png"))
+
+```
+
+</details>
+
+# Copy-number profiles
+
+Load gene annotaton used for CNV calling:
+
+```{r cnv_gene_anno, message = FALSE}
+
+gene_annotation <- read_tsv(
+    here("data/scRNAseq/references/inferCNV/gencode_v19_gen_pos_noHLAs_noMitoRibo.txt"),
+    col_names = c("gene", "contig", "start", "end"))
+
+```
+
+Generate a function that can generate the inferCNV heatmap:
+
+<details>
+
+```{r fn_plot_cnv, dependson = 'load_epen'}
+
+#' Plot CNV profile based on inferCNV
+#'
+#' This was adapted/refactored from code from Samantha Worme's function plotSampleCNVs()
+#'
+#' @param out Character, name of the output directory
+plot_profile <- function(seurat, infercnv_out, outfile, cells, cluster_rows = TRUE) {
+    
+    # prep and loading -----------------------------------------------------------
+    message("@ custom heatmap: preparing data...")
+    
+    # load gene x cell matrix
+    obs <- read.table(glue("{infercnv_out}/infercnv.observations.txt"))
+    
+    # set NA values to 1 (i.e. no CNV)
+    obs[is.na(obs)] <- 1
+    
+    # transpose to get cell x gene matrix
+    obs_t <- t(obs)
+    
+    # order genes based on gene annotation
+    contigs <- gene_annotation %>% filter(gene %in% colnames(obs_t))
+    obs_t   <- obs_t[, order(match(colnames(obs_t), contigs$gene))]
+    
+    message("@ custom heatmap: producing annotations...")
+    # produce the column (contig) annotation -------------------------------------
+    # 1. for each contig (chromosome), get the index of the last gene, which will be
+    # used to put gaps at those points in the heatmap
+    indices <- contigs %>%
+        group_by(contig) %>%
+        mutate(last = which(gene %in% last(gene))) %>%
+        filter(gene %in% last(gene)) %>%
+        pull(last)
+    
+    # 2. now that we have the index of the last gene in each contig, we need to sum
+    # these up to get the index of the last gene in each contig, relative
+    # to the whole gene annotation
+    last_gene_idx <- cumsum(indices)
+    
+    # select only the contig column (= chromosome number) for annotating the heatmap
+    contigs <- contigs %>%
+        select(contig, gene) %>%
+        tibble::column_to_rownames(var = "gene")
+    
+    # produce row annotations ----------------------------------------------------
+    # we'll colour by transcriptional cluster and # counts (i.e. # UMIs for 10X data),
+    # as well as genes marking a ependymal populations:
+    # FOXJ1, DNAH6
+    row_annotations <- data.frame("cell"      = colnames(seurat),
+                                  "celltype"  = as.character(seurat$Type_malig_inferCNV),
+                                  "ependymal" = as.character(seurat$Ependymal_binary),
+                                  stringsAsFactors = FALSE)
+    
+    row_annotations <- row_annotations %>%
+        # infercnv puts a "." in place of a "-" in the cell names
+        mutate(cell = gsub("-", ".", cell, fixed = TRUE)) %>%
+        column_to_rownames(var = "cell") %>%
+        .[rownames(obs_t), ]
+    
+    # create palettes ------------------------------------------------------------
+    
+    # for contigs, we'll use a repeating gray palette:
+    palette_contig <- rep(c("gray90", "gray70"), length.out = length(unique(contigs$contig)))
+    names(palette_contig) <- unique(contigs$contig)
+    
+    # for clusters, we'll take the palette from the Seurat object
+    # palette_clusters <- seurat@misc$colours
+    
+    # for expression of specific genes, we'll use a red-gray palette
+    # expr_palette <- grDevices::colorRampPalette(c("gray90", "#E09797", "red"))(n = 200)
+    
+    anno_palettes = list(contig    = palette_contig,
+                         celltype  = palette_type,
+                         ependymal = c("Ependymal" = "red", "Other" = "gray90"))
+    
+    # for the heatmap itself, generate a red-blue heatmap (this line returns a function)
+    hm_palette_generator <- infercnv:::color.palette(c("darkblue", "white", "darkred"), c(2, 2))
+    
+    message("@ custom heatmap: generating heatmap...")
+    
+    # label chromosomes by repurposing the column labels: generate a vector which will
+    # mostly be empty, but for one index in each contig, we'll put the chromosome labels
+    # for the first few chromosomes, shift the label slightly to the left so it's more centered...
+    labels_col <- rep("", ncol(obs_t))
+    labels_col[c(last_gene_idx[1:7] - 200,
+                 last_gene_idx[8:length(last_gene_idx)])] <- unique(contigs$contig)
+    
+    # generate the heatmap -------------------------------------------------------
+    hm_fun <- purrr::partial(pheatmap,
+                             mat = obs_t[cells, ],
+                             scale             = "none",
+                             border_color      = NA,
+                             cluster_rows      = cluster_rows,
+                             cluster_cols      = FALSE,
+                             clustering_method = "ward.D",
+                             labels_col        = labels_col,
+                             show_colnames     = TRUE,
+                             show_rownames     = FALSE,
+                             color             = hm_palette_generator(100),
+                             breaks            = seq(0.8, 1.2, length.out = 101),
+                             annotation_colors = anno_palettes,
+                             annotation_col    = contigs,
+                             annotation_row    = row_annotations,
+                             gaps_col          = last_gene_idx,
+                             treeheight_row    = 70, # make the dendrogram a little bit taller
+                             main              = glue("inferCNV"),
+                             annotation_legend = FALSE,
+                             fontsize_col      = 7,
+                             width             = 8,
+                             height            = 5)
+    
+    hm_fun(filename = glue("{outfile}.png"))
+    hm_fun(filename = glue("{outfile}.pdf"))
+    
+}
+
+
+```
+
+</details>
+
+For this analysis, we'll plot separately the CNV profiles of normal cells,
+malignant cells projected to the ependymal class, and malginant cells with
+other identities.
+
+```{r s1_cnv, dependson = c('fn_plot_cnv', 'load_epen')}
+
+s1_infercnv_out <- here("data/scRNAseq/pipeline_10X/P-6251_S-8496/inferCNV/window101_exp0.1_refG34normcleaned_HMMnone/")
+
+# correct the cell names to match the transformation by inferCNV
+fix_names <- function(x) gsub("-", ".", x, fixed = TRUE)
+
+plot_profile(seurat       = seurat_list[[2]],
+             infercnv_out = s1_infercnv_out,
+             cells        = WhichCells(seurat_list[[2]],
+                                       expression = Cell_type_consensus_Jessa2022 != "Uncertain") %>% fix_names(),
+             outfile      = glue("{figout}/P-6251_S-8496_CNV_all"))
+
+```
+
+```{r s1_cnv_show, cache = FALSE, echo = FALSE}
+
+knitr::include_graphics(glue("{figout}/P-6251_S-8496_CNV_all.png"))
+
+```
+
+Repeat for the second sample:
+
+```{r s2_cnv, dependson = c('fn_plot_cnv', 'load_epen')}
+
+s2_infercnv_out <- here("data/scRNAseq/pipeline_10X/P-1713_S-1713/inferCNV/window101_exp0.1_refG34normcleaned_HMMnone/")
+
+plot_profile(seurat       = seurat_list[[3]],
+             infercnv_out = s2_infercnv_out,
+             cells        = WhichCells(seurat_list[[3]],
+                                       expression = Cell_type_consensus_Jessa2022 != "Uncertain") %>% fix_names(),
+             outfile      = glue("{figout}/P-1713_S-1713_CNV_all"))
+
+```
+
+```{r s2_cnv_show, cache = FALSE, echo = FALSE}
+
+knitr::include_graphics(glue("{figout}/P-1713_S-1713_CNV_all.png"))
+
+```
+
+
+<!-- END MATTER, insert reproducibility info -->
+
+```{r footer, echo = FALSE, results = 'asis', warning = FALSE, cache = FALSE}
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "footer.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF END MATTER -->

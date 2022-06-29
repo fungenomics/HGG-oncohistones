@@ -1,0 +1,362 @@
+---
+title: "02 - Bulk RNAseq/ChIPseq comparisons"
+author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  resources: "NOT SPECIFIED"
+output:
+  html_document:
+    keep_md: yes
+    code_folding: show
+    theme: flatly
+    css: ../include/style.css
+    toc: yes
+    toc_depth: 4
+    number_sections: true
+    df_print: paged
+    includes:
+      before_body: ../include/header.html
+      after_body:  ../include/footer.html
+---
+
+<!-- FRONT MATTER, insert configuration info -->
+
+```{r header, echo = FALSE, results = 'asis', warning = FALSE}
+
+# Index of the document
+# ...determines name of the subfolder of `outputs` and `figures`
+doc_id <- "02"
+
+suppressMessages(library(here))
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "header.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF FRONT MATTER -->
+
+
+# Overview
+
+Here we interrogate differences in bulk RNAseq as well as H3K27ac and H3K27me3
+ChIPseq data between tumor types (H3.1 vs H3.3K27M pontine gliomas, and pontine vs
+thalamic H3.3K27M gliomas). This document generates the scatter plots integrating
+H3K27ac/H3K27me3/RNAseq, as shown in Figures 2 and 4.
+
+# Libraries
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# Load libraries here
+library(dplyr)
+library(tidyr)
+library(readr)
+library(readxl)
+library(glue)
+library(tibble)
+library(ggplot2)
+library(ggrepel)
+library(stringr)
+library(purrr)
+library(cowplot)
+library(feather)
+library(icytobox)
+
+source(here("include/style.R")) # contains palettes & plotting utils
+source(here("code/functions/RNAseq.R"))
+ggplot2::theme_set(theme_min())
+
+```
+
+
+
+
+# Load metadata
+
+Load the sample metadata for the project:
+
+```{r read_meta, cache = FALSE, message = FALSE}
+
+meta      <- read_tsv(here("data/metadata/metadata_patient_samples_NGS.tsv"))
+
+```
+
+
+```{r read_meta2, cache = FALSE, message = FALSE}
+
+meta_chip <- read_tsv(here("data/metadata/metadata_chip_all.tsv")) %>% 
+    right_join(meta, by = c("BioID", "ID_paper", "Material")) %>% 
+    mutate(Factor = gsub("-M", "", Factor)) %>%
+    filter(grepl("Cell-of-origin", Analyses))
+
+```
+
+# Differential expression (pons vs. thalamus, and H3.1 vs H3.3)
+
+
+Load the differential expression analyses between H3.1 vs H3.3 and pons vs. thalamic tumors:
+
+```{r load_dge, message = FALSE}
+
+# H3.1 has log2FoldChange > 0
+info_h31_vs_H33 <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.1.2K27M-Pons_vs_HGG-H3.3K27M-Pons/info.samples.tsv"))
+dge_h31_vs_h33 <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.1.2K27M-Pons_vs_HGG-H3.3K27M-Pons/diff/Ensembl.ensGene.exon/HGG-H3.3K27M-PonsvsHGG-H3.1.2K27M-Pons.tsv")) %>% 
+    separate(ID, into = c("ENSID", "symbol"), sep = ":")
+table(info_h31_vs_H33$Group)
+
+# Thalamus has log2FoldChange > 0
+info_thalamus_vs_pons <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.3K27M-Thal._vs_HGG-H3.3K27M-Pons/info.samples.tsv"))
+dge_thalamus_vs_pons <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.3K27M-Thal._vs_HGG-H3.3K27M-Pons/diff/Ensembl.ensGene.exon/HGG-H3.3K27M-PonsvsHGG-H3.3K27M-Thal..tsv")) %>% 
+    separate(ID, into = c("ENSID", "symbol"), sep = ":")
+table(info_thalamus_vs_pons$Group)
+
+```
+
+## Prepare tables
+
+We'll assemble 3 tables:
+
+1. raw counts
+2. DGE H3.1 vs H3.3
+3. DGE thalamus vs pons
+
+```{r tables_dge, cache = FALSE}
+
+# COUNTS -----------------------------------------------------------------------
+
+# get sample order as Table 1
+sample_order <- data.table::fread(here("data/metadata/bulk_info.samples.tsv"), data.table = FALSE) %>% .$Nickname
+
+counts_RNA <- read.table(here("data/RNAseq/pipeline_l3/all/counts/Ensembl.ensGene.exon.raw.tsv.gz"),
+                         header = T, sep = "\t", check.names = FALSE) %>%
+    tibble::rownames_to_column(var = "ID") %>% 
+    separate(ID, into = c("ENSID", "symbol"), sep = ":") %>% 
+    arrange(ENSID) %>%
+    .[, c("ENSID", "symbol", sample_order)] %T>%
+    rr_write_tsv(glue("{out}/TABLE_bulk_counts.tsv"),
+                 "Raw counts for bulk RNAseq data")
+
+# sanity checks
+length(colnames(counts_RNA)) - 2
+dim(counts_RNA)
+
+
+# DGE --------------------------------------------------------------------------
+dge_h31_vs_h33 %>% arrange(ENSID) %>%
+    rr_write_tsv(glue("{out}/TABLE_dge_H3.1_vs_H3.3.tsv"),
+                 "Differential gene expression analysis for H3.1K27M pons vs H3.3K27M pons (LFC > 0 indicates up in H3.1K27M)")
+
+dge_thalamus_vs_pons %>% arrange(ENSID) %>%
+    rr_write_tsv(glue("{out}/TABLE_dge_thal_vs_pons.tsv"),
+                 "Differential gene expression analysis for H3.3K27M thalamic vs H3.3K27M pons (LFC > 0 indicates up in thalamic)")
+
+# sanity checks
+dim(dge_h31_vs_h33)
+dim(dge_thalamus_vs_pons)
+
+```
+
+# ChIPseq
+
+## Load data
+
+```{r load_chip, message = FALSE}
+
+# slow
+data_chip <- read_xlsx(here("data/ChIPseq/quantifications_@mhulswit/20210521_H3.3H3.3EZHIP_H3K27ac_H3K27me3_RefSeq_Promoters_SJ.xlsx"), skip = 1)
+
+```
+
+Let's separate out the data into the summary stats (group medians and z-scores)
+and per-sample quantifications, and convert to tidy (long) format. Starting
+with the per-sample quantifications:
+
+```{r tidy_data_chip}
+
+data_chip_tidy <- data_chip %>%
+    dplyr::select(1:100, matches("Median_"),
+                  # only keep relevant Z-scores
+                  Z_H3.3K27M_Thalamus_H3.3K27M_Pons_H3K27ac,
+                  Z_H3.3K27M_Pons_H3.1K27M_Pons_H3K27ac,
+                  Z_H3.3K27M_Thalamus_H3.3K27M_Pons_H3K27me3,
+                  Z_H3.3K27M_Pons_H3.1K27M_Pons_H3K27me3) %>%
+    gather(dataset, value, 8:ncol(.)) %>%
+    mutate(Mark = case_when(
+        grepl("K27ac", dataset) ~ "H3K27ac",
+        grepl("K27me3", dataset) ~ "H3K27me3"
+    )) %>%
+    mutate(Sample = gsub("_Count|_RPKM", "", dataset)) %>% 
+    left_join(meta_chip %>% mutate(bw = basename(Path_bw_internal)) %>% dplyr::select(ID_paper, bw, Replicate),
+              # column name in ChIP quantification matches bw filename
+              by = c("Sample" = "bw"))  %>% 
+    filter(!grepl("NormalPons", Sample)) %>% 
+    # only keep the relevant Z
+    filter(!is.na(ID_paper) | grepl("^Median|^Z", Sample)) %>% 
+    # tidy
+    mutate(Sample = case_when(
+        grepl("Median_PFA_PF", Sample) ~ gsub("PFA_PF", "EZHIP_PFA", Sample),
+        grepl("Median_H3.1K27M_PF", Sample) ~ gsub("PF", "PFA", Sample),
+        TRUE ~ Sample))
+
+# sanity check: ensure that no samples present in this dataset are *NOT* included
+# in the ChIPseq metadata file
+base::setdiff(unique(data_chip_tidy$ID_paper), unique(meta_chip$ID_paper))
+
+save(data_chip_tidy, file = glue("{out}/data_chip_tidy.Rda"))
+
+data_chip_tidy %>%
+    distinct(Mark, Sample, ID_paper) %>%
+    left_join(meta %>% select(ID_paper, Group)) %>%
+    count(Mark, Group)
+
+# make table
+data_chip_tidy %>%
+    mutate(ID_paper = case_when(
+        grepl("^Z|^Median", Sample) ~ Sample,
+        TRUE ~ paste0(ID_paper, "-", Replicate, "__", Mark)
+    )) %>% 
+    dplyr::select(ID, gene_symbol = name, chr, start, end, strand, ID_paper, value) %>%
+    pivot_wider(names_from = ID_paper, values_from = value) %>% 
+    arrange(chr, start) %>%
+    rr_write_tsv(glue("{out}/TABLE_promoter_H3K27ac_H3K27me3_per_sample.tsv"),
+                 "Promoter H3K27ac and H3K27me3 enrichment (RPKM) in each sample, and summary stats")
+
+```
+
+Tidy summary stats:
+
+```{r summary_stats}
+
+data_chip_stats <- data_chip_tidy %>% 
+    filter(grepl("Z_", Sample)) %>% 
+    rename(statistic = Sample) %>% 
+    select(-ID_paper, -Replicate, -Mark, -dataset) %>% 
+    group_by(chr, strand, name, statistic) %>% 
+    top_n(1, `Exon Length`) %>% 
+    ungroup() %>% 
+    pivot_wider(names_from = statistic, values_from = value)
+
+save(data_chip_stats, file = glue("{out}/data_chip_stats.Rda"))
+
+```
+
+
+## Scatterplot for H3.1 vs H3.3 pons
+
+Here, we'll combine the DGE data with each of different source of ChIP-seq analysis,
+following code used to do a similar analysis for H3.3G34 gliomas here: https://github.com/fungenomics/G34-gliomas/blob/master/bulk_transcriptome_epigenome/analysis/03-ChIPseq.Rmd#L151 (from [Chen et al, 2020](https://www.cell.com/cell/fulltext/S0092-8674(20)31529-4?_returnURL=https%3A%2F%2Flinkinghub.elsevier.com%2Fretrieve%2Fpii%2FS0092867420315294%3Fshowall%3Dtrue)).
+
+The input for the scatter plot is essentially a data frame where, for each gene,
+we have:
+
+* A score for differential expression (e.g. log2FoldChange from DESeq2 differential expression analysis)
+* A score for differential H3K27me3 (e.g. Z-score for promoter H3K27me3)
+* A score for differential H3K27ac (e.g. Z-score for promoter H3K27ac)
+
+```{r merge_data, dependson = 'tidy_data_chip'}
+
+dge_h31_vs_h33_and_chip <- data_chip_stats %>%
+    select(name, H3K27ac = Z_H3.3K27M_Pons_H3.1K27M_Pons_H3K27ac, H3K27me3 = Z_H3.3K27M_Pons_H3.1K27M_Pons_H3K27me3) %>%
+    distinct() %>% 
+    mutate(H3K27ac = -as.numeric(H3K27ac),
+           H3K27me3 = -as.numeric(H3K27me3)) %>% 
+    left_join(dge_h31_vs_h33, by = c("name" = "symbol")) %>% 
+    filter(baseMean > 100) %>% 
+    # remove mitochondrial and Y-RNA
+    filter(!grepl("Y_RNA|^MT_", name))
+
+dim(dge_h31_vs_h33_and_chip)
+
+```
+
+
+```{r scatterplot_h31_vs_h33, fig.width = 7, fig.height = 6, dependson = 'tidy_data_chip', echo_fig = TRUE}
+
+# get limits of z-scores for x/y axes
+xlim <- range(dge_h31_vs_h33_and_chip$H3K27ac)
+ylim <- range(dge_h31_vs_h33_and_chip$H3K27me3)
+
+# all genes
+to_label <- dge_h31_vs_h33_and_chip %>%
+    filter((H3K27ac > 1 | H3K27ac < -0.5) |
+               (H3K27me3 > 2.5 | H3K27me3 < -3))
+nrow(to_label)
+
+dge_h31_vs_h33_and_chip %>% 
+    arrange(abs(log2FoldChange)) %>%
+    mutate(name = factor(name, levels = unique(.$name))) %>%
+    rr_ggplot(aes(x = H3K27ac, y = H3K27me3), plot_num = 1) +
+    geom_hline(yintercept = c(-0.5, 0.5), size = 0.5, colour = "gray90") +
+    geom_vline(xintercept = c(-0.5, 0.5), size = 0.5, colour = "gray90") +
+    geom_point(aes(colour = log2FoldChange, size = -log10(padj)), alpha = 0.8) +
+    scale_colour_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0)  +
+    geom_text_repel(aes(label = name), to_label,
+                    inherit.aes = TRUE, size = 2, segment.color = "gray70") +
+    xlab("Z score H3K27ac (H3.1K27M pons / H3.3K27M pons)") +
+    ylab("Z score H3K27me3 (H3.1K27M pons / H3.3K27M pons)")
+
+```
+
+
+## Scatterplot for H3.3 pons vs H3.3 thalamus
+
+```{r merge_data2, dependson = 'tidy_data_chip'}
+
+dge_pons_vs_thal_and_chip <- data_chip_stats %>%
+    select(name,
+           H3K27ac = Z_H3.3K27M_Thalamus_H3.3K27M_Pons_H3K27ac,
+           H3K27me3 = Z_H3.3K27M_Thalamus_H3.3K27M_Pons_H3K27me3) %>%
+    distinct() %>% 
+    mutate(H3K27ac = as.numeric(H3K27ac),
+           H3K27me3 = as.numeric(H3K27me3)) %>% 
+    left_join(dge_thalamus_vs_pons, by = c("name" = "symbol")) %>% 
+    filter(baseMean > 100) %>% 
+    # remove mitochondrial and Y-RNA
+    filter(!grepl("Y_RNA|^MT_", name))
+
+dim(dge_pons_vs_thal_and_chip)
+
+```
+
+
+```{r scatterplot_thal_vs_pons, fig.width = 7, fig.height = 6, dependson = 'tidy_data_chip', echo_fig = TRUE}
+
+# get limits of z-scores for x/y axes
+xlim <- range(dge_pons_vs_thal_and_chip$H3K27ac)
+ylim <- range(dge_pons_vs_thal_and_chip$H3K27me3)
+
+to_label <- dge_pons_vs_thal_and_chip %>%
+    filter((H3K27ac > 0.5 | H3K27ac < -0.2) &
+               (H3K27me3 > 1 | H3K27me3 < -0.5) & abs(log2FoldChange) > 2) %>% 
+    filter(-log10(padj) > 4 | log2FoldChange > 0)
+nrow(to_label)
+
+dge_pons_vs_thal_and_chip %>% 
+    arrange(abs(log2FoldChange)) %>%
+    mutate(name = factor(name, levels = unique(.$name))) %>%
+    rr_ggplot(aes(x = H3K27ac, y = H3K27me3), plot_num = 1) +
+    geom_hline(yintercept = c(-0.5, 0.5), size = 0.5, colour = "gray90") +
+    geom_vline(xintercept = c(-0.5, 0.5), size = 0.5, colour = "gray90") +
+    geom_point(aes(colour = log2FoldChange, size = -log10(padj)), alpha = 0.8) +
+    scale_colour_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0)  +
+    geom_text_repel(aes(label = name), to_label,
+                    inherit.aes = TRUE, size = 2, segment.color = "gray70") +
+    xlab("Z score H3K27ac (H3.3K27M thalamus / H3.3K27M pons)") +
+    ylab("Z score H3K27me3 (H3.3K27M thalamus / H3.3K27M pons)")
+
+```
+
+
+<!-- END MATTER, insert reproducibility info -->
+
+```{r footer, echo = FALSE, results = 'asis', warning = FALSE, cache = FALSE}
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "footer.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF END MATTER -->

@@ -1,0 +1,488 @@
+---
+title: "01B - Prepare human fetal hindbrain data"
+author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  resources: "NOT SPECIFIED"
+output:
+  html_document:
+    keep_md: yes
+    code_folding: show
+    theme: flatly
+    css: ../include/style.css
+    toc: yes
+    toc_depth: 3
+    number_sections: true
+    df_print: paged
+    includes:
+      before_body: ../include/header.html
+      after_body:  ../include/footer.html
+---
+
+<!-- FRONT MATTER, insert configuration info -->
+
+```{r header, echo = FALSE, results = 'asis', warning = FALSE}
+
+# Index of the document
+# ...determines name of the subfolder of `outputs` and `figures`
+doc_id <- "01B"
+
+suppressMessages(library(here))
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "header.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF FRONT MATTER -->
+
+
+# Overview
+
+In this analysis, we'll prepare the reference from the human fetal hindbrain data
+which has been processed with our single-cell workflow, and gather the
+required formats and outputs needed for comparisons to tumors:
+
+* annotated Seurat objects, per-sample and integrated across samples
+* gene signatures, per-cluster
+* mean expression profiles, per-cluster
+
+This data comes from [Bhaduri et al](http://dx.doi.org/10.1038/s41586-021-03910-8), and [Eze et al](http://dx.doi.org/10.1038/s41593-020-00794-1).
+
+The structure of this document largely follows the analogous document for the thalamus (`01A`),
+however there are no published labels used for this brain region.
+
+
+# Libraries
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# Load libraries here
+library(here)
+library(tidyr)
+library(dplyr)
+library(readxl)
+library(readr)
+library(glue)
+library(ggplot2)
+library(magrittr)
+library(purrr)
+library(cowplot)
+library(feather)
+library(Seurat)
+library(icytobox)
+library(ggrepel)
+
+source(here("include/style.R"))
+source(here("code/functions/scRNAseq.R"))
+ggplot2::theme_set(theme_min())
+
+```
+
+
+## Metadata
+
+```{r info_samples, message = FALSE}
+
+info_samples <- read_tsv(here("data/metadata/metadata_human_fetal_10X.tsv")) %>% 
+    filter(Region %in% c("Hindbrain", "Cerebellum"))
+
+palette_sample <- info_samples %>% select(Sample, Sample_color) %>% tibble::deframe()
+palette_alias  <- info_samples %>% select(Alias, Sample_color) %>% tibble::deframe()
+
+ages <- info_samples$Age %>% unique %>% sort()
+palette_age <- colorRampPalette(brewer.pal(8, "YlGnBu"))(n = length(ages))
+names(palette_age) <- ages
+
+```
+
+## QC
+
+```{r qc, message = FALSE, fig.width = 5, fig.height = 5, message = FALSE}
+
+qc_stats <- map_dfr(1:nrow(info_samples), ~ read_tsv(here(file.path(info_samples[.x, ]$Path, "preprocessing/seurat_metrics.tsv"))) %>% 
+                        tibble::add_column(.before = 1, Sample = info_samples[.x, ]$Sample))
+
+#' a function to plot a scatterplot of 2 column in the aggregated qc dataframe
+#' 
+#' @example qc_scatter(nCount_RNA_min.postQC, nCount_RNA_mean.postQC)
+qc_scatter <- function(col1, col2) {
+    
+    col1_quo <- enquo(col1)
+    col2_quo <- enquo(col2)
+    
+    qc_stats %>% 
+        ggplot(aes(x = !! col1_quo, y = !! col2_quo)) +
+        geom_point(aes(color = Sample), size = 4, alpha = 0.5) +
+        geom_text_repel(aes(label = Sample, color = Sample), size = 4) +
+        scale_color_manual(values = palette_sample) +
+        theme_min() +
+        no_legend()
+    
+}
+
+qc_scatter(N_cells_before, N_cells_after)
+
+```
+
+## Prep objects
+
+For each sample:
+
+* load and plot the Seurat object
+* count the number of cells in each cluster, and give each cluster a label prefixed w/ sample name
+* add the correlations predictions to the object
+* save the object
+
+```{r prep_samples, cache = FALSE, eval = TRUE, fig.width = 4.5, height = 4.5, message = FALSE}
+
+prep_seurat <- function(path_to_sample) {
+    
+    message("@ ", basename(path_to_sample))
+    
+    # load the object as output by the SC workflow
+    load(file.path(path_to_sample, "preprocessing/seurat.Rda"))
+    
+    # get the labels by correlations and add them to the Seurat object
+    labels_cor <- read_tsv(file.path(path_to_sample, "correlations/ref.joint_mouse_extended/correlation.predicted_labels.tsv")) %>%
+        tibble::column_to_rownames(var = "cell")
+    seurat <- AddMetaData(seurat,
+                          metadata = labels_cor,
+                          col.name = c("COR_ref.joint_mouse_extended", "COR_ref.joint_mouse_extended_score"))
+    
+    # get some summary stats per cluster
+    seurat[["Cluster_number"]] <- Idents(object = seurat)
+    
+    info_samples_cluster <- seurat@meta.data %>%
+        group_by(Cluster_number) %>%
+        mutate(N_cells = n()) %>%
+        group_by(Cluster_number, N_cells) %>%
+        summarize_at(vars(nCount_RNA, nFeature_RNA, percent.mito, percent.ribo, S.Score, G2M.Score), mean) %>%
+        tibble::add_column(.before = 1, Sample = basename(path_to_sample)) %>%
+        # add sample info table, and prefix the cluster number by the alias, so that it's unique
+        # in the form, [Alias]_[Cluster]
+        left_join(select(info_samples, Sample, Age, Alias), by = "Sample") %>%
+        mutate(Cluster = paste0(Alias, "_", Cluster_number)) %>%
+        select(Sample, Age, Alias, Cluster_number, Cluster, everything())
+    
+    # get the most common projection from the correlations (excluding the information
+    # of the timepoint from the mouse clusters)
+    best_match <- seurat@meta.data %>% rowwise() %>% 
+        mutate(Type = stringr::str_split_fixed(COR_ref.joint_mouse_extended, "_", 2) %>% getElement(2)) %>%
+        group_by(Cluster_number, Type) %>%
+        mutate(n = n()) %>%
+        group_by(Cluster_number) %>% top_n(1, n) %>%
+	  slice(1) %>%
+	  select(Cluster_number, n, Type, COR_ref.joint_mouse_extended)
+    
+    # sanity check
+    nrow(info_samples_cluster) == nrow(best_match)
+    
+    info_samples_cluster <- info_samples_cluster %>%
+        left_join(best_match, by = "Cluster_number") %>%
+        mutate(Prop_matched_mouse_atlas = round(n/N_cells, 2)) %>%
+        select(-n) %>% 
+        mutate(ID_20210610 = paste0(Cluster, "_", Type)) %>% 
+        select(-Type)
+    
+    # put the unique cluster labels in the Seurat object
+    seurat$Cluster <- plyr::mapvalues(seurat$Cluster_number,
+                                      from = info_samples_cluster$Cluster_number,
+                                      to = info_samples_cluster$Cluster)
+    Idents(seurat) <- "Cluster"
+    
+    seurat$ID_20210610 <- plyr::mapvalues(seurat$Cluster_number,
+                                          from = info_samples_cluster$Cluster_number,
+                                          to = info_samples_cluster$ID_20210610)
+    
+    # correct the palette
+    names(seurat@misc$colours) <- info_samples_cluster$Cluster
+    
+    # save the new seurat object
+    # save(seurat, file = here(file.path(path_to_sample, "seurat.Rda")))
+    
+    return(info_samples_cluster)
+    
+}
+
+# gather all cluster summary info
+info_clusters <- map_dfr(1:nrow(info_samples), ~ prep_seurat(info_samples[.x, ]$Path))
+write_tsv(info_clusters, glue("{out}/info_clusters.tsv"))
+
+```
+
+```{r read_ic, message = FALSE}
+
+info_clusters <- read_tsv(glue("{out}/info_clusters.tsv"))
+
+```
+
+## Sample exclusions
+
+No samples will be excluded due to low QC.
+
+## Per-cluster QC
+
+```{r clusters_qc}
+
+info_clusters %>% nrow()
+
+info_clusters2 <- info_clusters %>%
+    mutate(Note_sample = "OK",
+           Note_cluster = case_when(
+               N_cells < 30 ~ "Less than 30 cells",
+               nCount_RNA < 1000 ~ "Low number of UMIs",
+               percent.ribo > 50 ~ "High ribosomal content",
+               TRUE ~ "OK"
+           ))
+
+info_clusters2 %>% filter(Note_sample == "OK" & Note_cluster == "OK") %>% nrow()
+write_tsv(info_clusters2, glue("{out}/info_clusters2.tsv"))
+
+# total # of cells
+sum(info_clusters2$N_cells)
+
+```
+
+## QC tables
+
+```{r qc_table}
+
+TABLE_hindbrain_qc <- info_samples %>% 
+    left_join(qc_stats, by = "Sample") %>% 
+    mutate(Publication = case_when(
+        grepl("CS", Sample) ~ "Eze et al, Nature Neuroscience, 2021",
+        grepl("GW", Sample) ~ "Bhaduri et al, Nature, 2021"
+    )) %>% 
+    mutate(Note_sample = "OK") %>% 
+    select(
+        # Sample info
+        Sample, Age, Alias, Region, Publication,
+        # QC
+        # N_reads = `Number of Reads`,
+        # N_cells_estimated = `Estimated Number of Cells`,
+        N_cells_after_filtering = N_cells_after,
+        # Reads_mapped_to_genome = `Reads Mapped to Genome`,
+        # Reads_mapped_to_transcriptome = `Reads Mapped Confidently to Transcriptome`,
+        Mean_mitochondrial_content_after_filtering = percent.mito_mean.postQC,
+        Mean_UMIs_after_filtering = nCount_RNA_mean.postQC,
+        Mean_N_genes_after_filtering = nFeature_RNA_mean.postQC,
+        Max_mito_threshold = percent.mito_max.threshold,
+        Min_N_genes_threshold = nFeature_RNA_min.threshold,
+        Max_N_genes_threshold = nFeature_RNA_max.threshold,
+        Max_UMIs_threshold = nCount_RNA_max.threshold,
+        Note_sample)
+
+rr_write_tsv(TABLE_hindbrain_qc,
+             glue("{out}/TABLE_hindbrain_QC.tsv"),
+             "Summary of sample info and QC for hindbrain samples")
+
+```
+
+# Gather gene signatures
+
+First, load all cluster markers and filter out markers for samples/cluters that we'll exclude:
+
+```{r generate_signatures, message = FALSE}
+
+clusters_keep <- info_clusters2 %>% filter(Note_cluster == "OK") %>% pull(Cluster)
+
+cluster_markers <- map_dfr(1:nrow(info_samples), ~ read_tsv(here(file.path(info_samples[.x, ]$Path, "preprocessing/cluster_markers.tsv"))) %>%
+                               tibble::add_column(Sample = info_samples[.x, ]$Sample)) %>%
+    # get positive markers
+    filter(avg_logFC > 0) %>%
+    mutate(cluster = as.numeric(cluster)) %>%
+    # add the cluster/sample info
+    left_join(info_clusters2 %>% select(Sample, Cluster_number, Cluster), by = c("Sample" = "Sample", "cluster" = "Cluster_number")) %>%
+    rename(Cluster_number = cluster) %>%
+    # filter out excluded samples and clusters
+    filter(Cluster %in% clusters_keep) %>%
+    # get the diff between pct.1 and pct.2
+    mutate(pct_diff = pct.1 - pct.2) %>%
+    # reorder
+    select(gene, pct_diff, everything())
+
+# sanity checks
+unique(cluster_markers$Cluster) %>% length()
+all(cluster_markers$Cluster %in% clusters_keep)
+
+head(cluster_markers)
+
+# save
+write_tsv(cluster_markers, glue("{out}/cluster_markers.tsv"))
+
+```
+
+Second, filter these down to 100-gene signatures:
+
+```{r signatures}
+
+#' Create 100-gene signature given the markers for one cluster
+filter_markers <- function(markers, sp = "hg", n_top = 100) {
+    
+    markers %>%
+        # filter out mitochondrial and ribosomal genes
+        dplyr::filter(., !grepl("RPS|RPL|MRPS|MRPL|^MT-", gene)) %>%
+        group_by(Cluster) %>%
+        # get positive markers
+        dplyr::filter(avg_logFC > 0) %>%
+        # sort by p-val
+        arrange(p_val_adj) %>%
+        # make sure they're unique
+        distinct(gene, .keep_all = TRUE) %>%
+        dplyr::slice(1:n_top) %>%
+        ungroup()
+    
+}
+
+# read gene annotation
+anno <- read_tsv(here("data/misc/gene_annotation_with_homologous_mice_genes.txt"))
+
+hindbrain_signatures_df <- cluster_markers %>%
+    left_join(select(anno,
+                     hsapiens_external_gene_id,
+                     hsapiens_ensembl_gene_id,
+                     mmusculus_external_gene_id,
+                     mmusculus_ensembl_gene_id = mmusculus_homolog_ensembl_gene),
+              by = c("gene" = "hsapiens_external_gene_id")) %>%
+    filter_markers()
+
+```
+
+## Signature QC
+
+Compute some stats to assess how specific these are:
+
+```{r signatures_qc, fig.width = 12, fig.height = 22, dependson = 'signatures'}
+
+# Sanity check
+sort(table(hindbrain_signatures_df$Cluster))
+
+hindbrain_signatures_df_qc <- hindbrain_signatures_df %>%
+    group_by(Sample, Cluster) %>%
+    summarise(median_logFC = median(avg_logFC),
+              max_logFC = max(avg_logFC),
+              n_gene_FC_above_1.5 = sum(avg_logFC > log2(1.5)),
+              median_pct.1 = median(pct.1),
+              median_pct.2 = median(pct.2)) %>%
+    arrange(median_logFC)
+
+# save intermediate files
+write_tsv(hindbrain_signatures_df, glue("{out}/hindbrain_signatures_df.tsv"))
+write_tsv(hindbrain_signatures_df_qc, glue("{out}/hindbrain_signatures_df_qc.tsv"))
+
+```
+
+We'll also want to remove erythrocyte & melanocyte clusters, which are quite biologically distinct:
+
+```{r filter_erythro_melano}
+
+erythro_markers <- c("HBB", "HBA1", "HBA2", "HBZ", "HBG1")
+(erythro_count <- cluster_markers %>% filter(gene %in% erythro_markers) %>% pull(Cluster) %>% table())
+
+# remove the clusters with 4-5 of these markers:
+erythro_clusters <- names(erythro_count)[erythro_count >= 4]
+
+melano_markers <- c("DCT", "MITF", "PMEL")
+(melano_count <- cluster_markers %>% filter(gene %in% melano_markers) %>% pull(Cluster) %>% table())
+
+# remove the clusters with all three of these:
+melano_clusters <- names(melano_count)[melano_count == 3]
+
+```
+
+
+Filter out signatures which have outlier QC stats, indicative of non-specific signatures:
+
+```{r sigs_qc}
+
+hindbrain_signatures_df_qc_filt <- hindbrain_signatures_df_qc %>%
+    filter(median_pct.2 < 0.4) %>%
+    filter(n_gene_FC_above_1.5 > 10)
+
+signatures_keep <- hindbrain_signatures_df_qc_filt$Cluster
+length(signatures_keep)
+
+info_clusters3 <- info_clusters2 %>%
+    mutate(Note_cluster = case_when(
+        Cluster %in% erythro_clusters ~ "Erythrocyte cluster, excluded",
+        Cluster %in% melano_clusters ~ "Melanocyte cluster, excluded",
+        TRUE ~ Note_cluster
+    )) %>%
+    mutate(Note_signature = case_when(
+        Note_cluster != "OK" ~ "Excluded, see Note_sample/Note_cluster",
+        !(Cluster %in% signatures_keep) ~ "Non-specific signature",
+        TRUE ~ "OK"
+    ))
+
+write_tsv(info_clusters3, glue("{out}/info_clusters3.tsv"))
+
+clusters_drop <- c(erythro_clusters, melano_clusters)
+
+```
+
+Convert to a list:
+
+```{r sigs_list}
+
+hindbrain_signatures_df_filt <- hindbrain_signatures_df %>%
+    filter(Cluster %in% signatures_keep & !(Cluster %in% clusters_drop))
+
+hf_hindbrain_signatures <- list('hg_sym' = split(hindbrain_signatures_df, f = hindbrain_signatures_df$Cluster) %>% map(~ pull(.x, gene) %>% .[!is.na(.)]),
+                               'hg_ens' = split(hindbrain_signatures_df, f = hindbrain_signatures_df$Cluster) %>% map(~ pull(.x, hsapiens_ensembl_gene_id) %>% .[!is.na(.)]))
+
+save(hf_hindbrain_signatures, file = glue("{out}/hindbrain_signatures.Rda"))
+
+```
+
+# Join data
+
+Next, let's write out the config for integrating these samples:
+
+```{r info_samples2}
+
+info_samples2 <- info_samples %>%
+    select(Path, Sample = Alias, Age, Color = Sample_color) %>%
+    mutate(Path = paste0(Path, "/seurat.Rda")) %>%
+    write_tsv(glue("{out}/info.samples.tsv"))
+
+info_groups <- data.frame("Covariate" = "Age",
+                          "Levels" = unique(info_samples$Age),
+                          "Color" = c("#7bccc4", "#ccebc5", "#fdd49e", "#fc8d59", "#ef6548", "#d7301f", "#b30000", "#7f0000")) %T>%
+    write_tsv(glue("{out}/info.groups.tsv"))
+
+```
+
+
+## Annotation
+
+Make the annotation for the cell type projection scripts:
+
+```{r write_anno}
+
+# set cluster color as best-matching cluster in mouse atlas
+palette_mouse_df <- palette_joint_mouse_extended %>% tibble::enframe()
+cluster_palette_mouse_match <- info_clusters3 %>%
+  left_join(palette_mouse_df, by = c("COR_ref.joint_mouse_extended" = "name")) %>% 
+  select(Cluster, value) %>%
+  tibble::deframe()
+
+# write annotation
+cluster_palette_mouse_match %>% 
+  tibble::enframe("Cell_type", "Color") %>% 
+  write_tsv(glue("{out}/hf_hindbrain_annotation.tsv"))
+
+```
+
+<!-- END MATTER, insert reproducibility info -->
+
+```{r footer, echo = FALSE, results = 'asis', warning = FALSE, cache = FALSE}
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "footer.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF END MATTER -->

@@ -1,0 +1,206 @@
+---
+title: "06 - Effect of ACVR1"
+author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  resources: "NOT SPECIFIED"
+output:
+  html_document:
+    keep_md: yes
+    code_folding: show
+    theme: flatly
+    css: ../include/style.css
+    toc: yes
+    toc_depth: 4
+    number_sections: true
+    df_print: paged 
+    includes:
+      before_body: ../include/header.html
+      after_body:  ../include/footer.html
+---
+
+<!-- FRONT MATTER, insert configuration info -->
+
+```{r header, echo = FALSE, results = 'asis', warning = FALSE}
+
+# Index of the document
+# ...determines name of the subfolder of `outputs` and `figures`
+doc_id <- "06"
+
+suppressMessages(library(here))
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "header.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF FRONT MATTER -->
+
+
+# Overview
+
+This document contains analyses to understand the dependency of ACVR1 in K27M
+and especially H3.1K27M gliomas, and to interrogate the changes that result from
+knocking-out ACVR1 using CRISPR in ACVR1 mutant HGG cell lines, as shown in Figure 6.
+
+# Libraries
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# Load libraries here
+library(here)
+library(tidyr)
+library(dplyr)
+library(ggrepel)
+library(readr)
+library(readxl)
+library(glue)
+library(tibble)
+library(ggplot2)
+library(purrr)
+library(stringr)
+library(cowplot)
+library(fgsea)
+library(icytobox)
+
+source(here("include/style.R")) # contains palettes and custom style elements
+source(here("code/functions/RNAseq.R"))
+source(here("code/functions/ssGSEA.R"))
+ggplot2::theme_set(theme_min())
+
+```
+
+
+
+# ID genes ddPCR
+
+ddPCR assay of ID gene expression.
+
+```{r ddpcr_id_genes, fig.width = 6, fig.height = 4, echo_fig = TRUE}
+
+# load data
+ddpcr <- suppressMessages(read_tsv(here("data/experimental/2022-03-10-ddPCR_ID_genes_@mhulswit.txt")))
+
+# barplot
+ddpcr_tidy <- ddpcr %>% 
+  # remove xenografts
+  filter(!grepl("[Xx]eno", Sample)) %>%
+  gather(Stat, Value, matches("ID")) %>% 
+  separate(Stat, into = c("Gene", "Stat"), sep = "_") %>% 
+  spread(Stat, Value) %>% 
+  separate(Sample, into = c("Cell_line", "CRISPR"), sep = "_") %>% 
+  mutate(Condition = factor(Condition, levels = c("ACVR1 mutant", "ACVR1 KO")))
+
+ddpcr_tidy %>% 
+  rr_ggplot(aes(x = Condition, y = fold), plot_num = 1) +
+  geom_bar(aes(fill = Condition), stat = "identity", width = 0.5) +
+  geom_errorbar(aes(ymin = fold - sd, ymax = fold + sd), width = 0.25) +
+  scale_fill_manual(values = palette_acvr1) +
+  facet_grid(Cell_line ~ Gene, scales = "free_x", space = "free", drop = TRUE) + 
+  ylim(c(0, 1.2)) +
+  rotate_x()
+
+```
+
+
+# Clonogenesis
+
+Data for clone formation assay for ACVR1 mutant and KO cell lines.
+
+```{r clonogenesis, fig.width = 4, fig.height = 3, echo_fig = TRUE}
+
+# load data
+clono <- suppressMessages(read_tsv(here("data/experimental/clonogenic_assay_DIPG36_@am.txt")))
+
+# tidy & plot
+se <- function(x) sqrt(var(x)/length(x))
+
+clono_tidy <- clono %>% 
+    set_colnames(c("ACVR1 mutant", "ACVR1 KO")) %>% 
+    gather(Condition, N_clones) %>% 
+    mutate(Condition = factor(Condition, levels = names(palette_acvr1))) %>% 
+    filter(!is.na(N_clones))
+
+clono_tidy %>% 
+    group_by(Condition) %>% 
+    summarize(N_clones_mean = mean(N_clones),
+              N_clones_se   = se(N_clones)) %>% 
+    rr_ggplot(aes(x = Condition, y = N_clones_mean), plot_num = 1) +
+    geom_bar(aes(fill = Condition), stat = "identity", width = 0.5) +
+    geom_errorbar(aes(ymin = N_clones_mean - N_clones_se, ymax = N_clones_mean + N_clones_se), width = 0.25) +
+    geom_jitter(data = clono_tidy, aes(x = Condition, y = N_clones), width = 0.2, size = 1) +
+    scale_fill_manual(values = palette_acvr1) +
+    ylim(c(0, 150))
+
+t.test(clono$Parental, clono$`ACVR1 KO`, alternative = "two.sided", var.equal = TRUE)
+
+```
+
+
+# Doubling times
+
+Doubling times of H3.1 and H3.3K27M cell lines.
+
+```{r doubling_H3.1_vs_H3.3, fig.width = 3, fig.height = 3, echo_fig = TRUE}
+
+# load data
+doubling_H3.1_vs_H3.3 <- suppressMessages(read_tsv(here("data/experimental/doubling_time_H3.3_vs_H3.1_@am.txt")))
+
+# tidy & plot
+doubling_H3.1_vs_H3.3_tidy <- doubling_H3.1_vs_H3.3 %>% 
+    set_colnames(c("DIPGXIII", "HSJ-019", "DIPG36", "DIPGIV")) %>% 
+    gather(Cell_line, Doubling_time) %>% 
+    filter(!is.na(Doubling_time))
+
+doubling_H3.1_vs_H3.3_tidy %>% 
+    group_by(Cell_line) %>% 
+    summarize(Doubling_mean = mean(Doubling_time),
+              Doubling_sd   = sd(Doubling_time)) %>% 
+    rr_ggplot(aes(x = Cell_line, y = Doubling_mean), plot_num = 1) +
+    geom_bar(aes(fill = Cell_line), stat = "identity", width = 0.5) +
+    geom_errorbar(aes(ymin = Doubling_mean - Doubling_sd, ymax = Doubling_mean + Doubling_sd), width = 0.25) +
+    geom_jitter(data = doubling_H3.1_vs_H3.3_tidy, aes(x = Cell_line, y = Doubling_time), width = 0.1, size = 1) +
+    scale_fill_manual(values = c("DIPG36" = "orange", "DIPGIV" = "orange", "DIPGXIII" = "red3", "HSJ-019" = "red3")) + 
+    no_legend()
+
+```
+
+```{r doubling_ACVR1, fig.width = 3, fig.height = 3, echo_fig = TRUE}
+
+# load data
+doubling_ACVR1 <- suppressMessages(read_tsv(here("data/experimental/doubling_time_DIPGIV_ACVR1mut_vs_KO_@am.txt")))
+
+# tidy & plot
+doubling_ACVR1_tidy <- doubling_ACVR1 %>% 
+    set_colnames(c("ACVR1 mutant", "ACVR1 KO")) %>% 
+    gather(Condition, Doubling_time) %>% 
+    mutate(Condition = factor(Condition, levels = names(palette_acvr1))) %>% 
+    filter(!is.na(Condition))
+
+doubling_ACVR1_tidy %>% 
+    group_by(Condition) %>% 
+    summarize(Doubling_mean = mean(Doubling_time),
+              Doubling_sd   = sd(Doubling_time)) %>% 
+    rr_ggplot(aes(x = Condition, y = Doubling_mean), plot_num = 1) +
+    geom_bar(aes(fill = Condition), stat = "identity", width = 0.5) +
+    geom_errorbar(aes(ymin = Doubling_mean - Doubling_sd, ymax = Doubling_mean + Doubling_sd), width = 0.25) +
+    geom_jitter(data = doubling_ACVR1_tidy, aes(x = Condition, y = Doubling_time), width = 0.1, size = 1) +
+    scale_fill_manual(values = palette_acvr1) + 
+    no_legend() +
+    ylim(c(0, 50))
+
+```
+
+
+<!-- END MATTER, insert reproducibility info -->
+
+```{r footer, echo = FALSE, results = 'asis', warning = FALSE, cache = FALSE}
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "footer.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF END MATTER -->

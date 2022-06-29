@@ -1,0 +1,277 @@
+---
+title: "00 - Generate oncoprints"
+author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  resources: "NOT SPECIFIED"
+output:
+  html_document:
+    keep_md: yes
+    code_folding: show
+    theme: flatly
+    css: ../include/style.css
+    toc: yes
+    toc_depth: 3  
+    number_sections: true
+    df_print: paged
+    includes:
+      before_body: ../include/header.html
+      after_body:  ../include/footer.html
+---
+
+<!-- FRONT MATTER, insert configuration info -->
+
+```{r header, echo = FALSE, results = 'asis', warning = FALSE}
+
+# Index of the document
+# ...determines name of the subfolder of `outputs` and `figures`
+doc_id <- "00"
+
+suppressMessages(library(here))
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "header.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF FRONT MATTER -->
+
+
+# Overview
+
+This document plots summaries of the samples included in this analysis as oncoprints as shown in Figure 1.
+
+# Libraries
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# Load libraries here
+library(here)
+library(tidyr)
+library(dplyr)
+library(readr)
+library(glue)
+library(tibble)
+library(ggplot2)
+library(cowplot)
+
+source(here("include/style.R")) # contains palettes & plotting utils
+ggplot2::theme_set(theme_min())
+
+```
+
+# Oncoprint
+
+We'll generate an oncoprint for unique patient tumor samples, and patient-derived
+cell lines.
+
+## Tumors
+
+```{r oncoprint_tumors, fig.width = 8, fig.height = 12, cache = FALSE, message = FALSE}
+
+oncoprint_input_tumors <- read_tsv(here("data/metadata/oncoprint_input_tumors.tsv")) %>% 
+  mutate(Molecular = factor(Molecular, levels = names(palette_molecular)),
+           Location = factor(Location, levels = names(palette_location))) %>%
+  arrange(desc(Type), Molecular, Location, GrowthFactorReceptor,
+            desc(scRNAseq), desc(scATACseq), desc(RNAseq), desc(H3K27ac), desc(H3K27me3), desc(H3K27me2)) %>%
+    mutate(ID_patient = factor(ID_patient, levels = .$ID_patient))
+
+p0 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = Material), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Tumor" = "azure2", "Cell line" = "gray80", "Both" = "gray50"),
+                      guide = guide_legend(ncol = 2)) +
+    theme_min() + # the theme_row() theme is defined in include/style.R
+    theme_row()
+
+p1 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = Molecular), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = palette_molecular, guide = guide_legend(ncol = 2)) +
+    theme_min() +
+    theme_row()
+
+p2 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = GrowthFactorReceptor), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = palette_gfr, na.value = "gray90", guide = guide_legend(ncol = 2)) +
+    theme_min() +
+    theme_row()
+
+p3 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = Location), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = palette_location, na.value = "gray90", guide = guide_legend(ncol = 2)) +
+    theme_min() +
+    theme_row()
+
+p4 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = Age), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_gradientn(colours = brewer.pal(9, "YlGnBu"), na.value = "gray90") +
+    theme_min() +
+    theme_row()
+
+p5 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = scRNAseq), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#2a9135", "Y" = "#6fc978", "-" = "gray90")) +
+    theme_min() +
+    theme_row()
+
+p6 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = scATACseq), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#0ad1b7", "-" = "gray90")) +
+    theme_min() +
+    theme_row()
+
+p7 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = RNAseq), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#2064f7", "Y" = "#6c88c4", "-" = "gray90")) +
+    theme_min() +
+    theme_row()
+
+p8 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = H3K27ac), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#f72076", "Y" = "#c95583", "-" = "gray90")) +
+    theme_min() +
+    theme_row()
+
+p9 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = H3K27me3), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#650ac7", "Y" = "#9363c7", "-" = "gray90")) +
+    theme_min() +
+    theme_row()
+
+p10 <- oncoprint_input_tumors %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = H3K27me2), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#e04902", "Y" = "#d18460", "-" = "gray90")) +
+    theme(panel.border = element_blank(),
+          axis.text.y = element_blank(),
+          axis.title.y = element_blank(),
+          axis.ticks = element_blank()) +
+    rotate_x()
+
+cowplot::plot_grid(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+                   align = "v", axis = "r", ncol = 1,
+                   rel_heights = c(rep(0.08, 10), 0.2))
+
+```
+
+## Cell lines
+
+```{r oncoprint_cl, fig.width = 4, fig.height = 12, cache = FALSE, message = FALSE}
+
+oncoprint_input_cl <- read_tsv(here("data/metadata/oncoprint_input_cl.tsv")) %>% 
+  mutate(Molecular = factor(Molecular, levels = names(palette_molecular)),
+           Location = factor(Location, levels = names(palette_location))) %>%
+  arrange(desc(Type), Molecular, Location, GrowthFactorReceptor,
+            desc(scRNAseq), desc(scATACseq), desc(RNAseq), desc(H3K27ac), desc(H3K27me3), desc(H3K27me2)) %>%
+    mutate(ID_patient = factor(ID_patient, levels = .$ID_patient))
+
+p0 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = Material), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Tumor" = "azure2", "Cell line" = "gray80", "Both" = "gray50"),
+                      guide = guide_legend(ncol = 2)) +
+    theme_min() +
+    theme_row()
+
+p1 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = Molecular), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = palette_molecular, guide = guide_legend(ncol = 2)) +
+    theme_min() +
+    theme_row()
+
+p2 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = GrowthFactorReceptor), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = palette_gfr, na.value = "gray90", guide = guide_legend(ncol = 2)) +
+    theme_min() +
+    theme_row()
+
+p3 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = Location), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = palette_location, na.value = "gray90", guide = guide_legend(ncol = 2)) +
+    theme_min() +
+    theme_row()
+
+p4 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = Age), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_gradientn(colours = brewer.pal(9, "YlGnBu"), na.value = "gray90", limits = c(0, 20)) +
+    theme_min() +
+    theme_row()
+
+p5 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = scRNAseq), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#2a9135", "Y" = "#6fc978", "-" = "gray90")) +
+    theme_min() +
+    theme_row()
+
+p6 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = scATACseq), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#0ad1b7", "-" = "gray90")) +
+    theme_min() +
+    theme_row()
+
+p7 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = RNAseq), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#2064f7", "Y" = "#6c88c4", "-" = "gray90")) +
+    theme_min() +
+    theme_row()
+
+p8 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = H3K27ac), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#f72076", "Y" = "#c95583", "-" = "gray90")) +
+    theme_min() +
+    theme_row()
+
+p9 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = H3K27me3), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#650ac7", "Y" = "#9363c7", "-" = "gray90")) +
+    theme_min() +
+    theme_row()
+
+p10 <- oncoprint_input_cl %>%
+    ggplot(aes(x = ID_patient, y = 1)) +
+    geom_tile(aes(fill = H3K27me2), colour = "white", width = 0.9, height = 0.9) +
+    scale_fill_manual(values = c("Y (new)" = "#e04902", "Y" = "#d18460", "-" = "gray90")) +
+    theme(panel.border = element_blank(),
+          axis.text.y = element_blank(),
+          axis.title.y = element_blank(),
+          axis.ticks = element_blank()) +
+    rotate_x()
+
+cowplot::plot_grid(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+                   align = "v", axis = "r", ncol = 1,
+                   rel_heights = c(rep(0.08, 10), 0.2))
+
+```
+
+
+
+<!-- END MATTER, insert reproducibility info -->
+
+```{r footer, echo = FALSE, results = 'asis', warning = FALSE, cache = FALSE}
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "footer.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF END MATTER -->

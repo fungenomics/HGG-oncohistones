@@ -1,0 +1,13 @@
+param	value	description
+cellranger_dir	NA	string, name of directory of the cellranger run to use. If NA, it's inferred from the technology Rmd parameter: {"10X_sc_chromium_3prim":"cellranger_count", "10X_sn_chromium_3prim":"cellranger_count_premrna"}. To use a custom cellranger output directory, specify the name of the directory here.
+species	h_sapiens	string, allowed values are either "h_sapiens" or "m_musculus", name of species used to identify mitochrondrial and ribosomal genes
+normalization	LogNormalize	string, allowed values are "LogNormalize" or "SCTransform", indicates which method of normalization will be used as input for downstream analysis and saved as the default assay in the Seurat object
+min_cells	3	numeric, hard minimum number of cells in which a gene must be detected
+min_features	200	numeric, hard minimum number of features which must be detected in a cell, used for initial construction of Seurat object; if a dynamic cutoff set at 2 st deviations below the mean exceeds this, it will be used to filter out additional cells
+max_mito	NA	numeric, hard max on mitochondrial content. By default, the upper threshold on mito content is the max of 5% and 2 st deviations above the mean. Setting this parameter will override the default behaviour and set a hard upper threshold on mito content.
+var_regress	nCount_RNA,percent.mito	string, separate multiple values with a comma, variables to regress from gene expression (each value must match a column name in meta.data slot)
+pcs_compute	100	numeric, number of PCs to compute and store in the seurat object
+pcs_keep	30	numeric, number of PCs to use for downstream steps: tSNE, UMAP and clustering 
+clustering_resolution	1	numeric, resolution for which the clustering solution will be saved as default in the Seurat object, used for computing per-cluster QC metrics, and used for cluster marker calling (clustering with resolution 0.6, 0.8, 1, 2 will automatically be computed)
+seed	42	numeric, random seed, set for reproducibility of results
+lite	0	numeric, from 0-5, controls how much output is saved. 0: all outputs saved and figures are saved as PNG and PDF. Higher numbers progressively reduce the amount of output, for storage efficiency. NOT YET IMPLEMENTED.

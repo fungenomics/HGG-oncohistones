@@ -1,0 +1,10 @@
+param	value
+cluster_by_groups	FALSE
+window_length	101
+expression_threshold	0.1
+analysis_mode	samples
+intermediates	FALSE
+HMM	none
+gene_annotation	inferCNV/refs/gencode_v19_gen_pos_noHLAs_noMitoRibo.txt
+reference	inferCNV/refs/seurat_allG34NormCells_cleaned.Rds
+reference_key	G34normcleaned

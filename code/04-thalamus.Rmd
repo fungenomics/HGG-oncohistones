@@ -1,0 +1,199 @@
+---
+title: "04 - Analysis of thalamic H3K27M tumors"
+author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+  resources: "NOT SPECIFIED"
+output:
+  html_document:
+    keep_md: yes
+    code_folding: show
+    theme: flatly
+    css: ../include/style.css
+    toc: yes
+    toc_depth: 4
+    number_sections: true
+    df_print: paged
+    includes:
+      before_body: ../include/header.html
+      after_body:  ../include/footer.html
+---
+
+<!-- FRONT MATTER, insert configuration info -->
+
+```{r header, echo = FALSE, results = 'asis', warning = FALSE}
+
+# Index of the document
+# ...determines name of the subfolder of `outputs` and `figures`
+doc_id <- "04"
+
+suppressMessages(library(here))
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "header.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF FRONT MATTER -->
+
+
+# Overview
+
+In this document, we investigate the activation of diencephalon patterning genes
+in thalamic gliomas as shown in Figure 3.
+
+# Libraries
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# Load libraries here
+library(here)
+library(tidyr)
+library(dplyr)
+
+library(GenomicRanges)
+library(BentoBox)
+library(BSgenome.Hsapiens.UCSC.hg19)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library(org.Hs.eg.db)
+library(rtracklayer)
+
+library(ggrepel)
+library(readr)
+library(glue)
+library(tibble)
+library(ggplot2)
+library(purrr)
+library(cowplot)
+
+source(here("include/style.R"))
+source(here("code/functions/BentoBox_helpers.R"))
+source(here("code/functions/RNAseq.R"))
+source(here("code/functions/scRNAseq.R"))
+ggplot2::theme_set(theme_min())
+
+```
+
+# Load metadata
+
+Load the sample metadata for the project:
+
+
+```{r read_meta, cache = FALSE, message = FALSE}
+
+meta      <- read_tsv(here("data/metadata/metadata_patient_samples_NGS.tsv"))
+
+```
+
+
+```{r read_meta2, cache = FALSE, message = FALSE}
+
+meta_chip <- read_tsv(here("data/metadata/metadata_chip_all.tsv")) %>% 
+    right_join(meta, by = c("BioID", "ID_paper", "Material")) %>% 
+    mutate(Factor = gsub("-M", "", Factor)) %>%
+    filter(grepl("Cell-of-origin", Analyses))
+
+```
+
+
+# Activation of prosomere markers
+
+To map thalamic tumors to the prosomeres of the diencephalon, we'll assess the activation
+of various prosomere 2/3 markers in the tumors based on RNAseq, H3K27ac and H3K27me3:
+
+```{r prosomere_bb_prep}
+
+# set genes to examine
+prosomere_markers <- list(
+    GRanges("chr3",  147093346:147150046, name = "ZIC1/4"),
+    GRanges("chr2",  63273543:63289360,   name = "OTX1"),
+    GRanges("chr2",  237071880:237079029, name = "GBX2"),
+    GRanges("chr16", 54315217:54322699,   name = "IRX3"),
+    GRanges("chr7",  2544962:2574432,     name = "LFNG"),
+    GRanges("chr10", 119295203:119315811, name = "EMX2"),
+    GRanges("chr2",  45163986:45175965,   name = "SIX3"),
+    GRanges("chr7",  121940057:121946104, name = "FEZF1"))
+
+# make params
+params_prosomere <- map(prosomere_markers, ~ bb_params(chrom = as.character(seqnames(.x)),
+                                                       chromstart = start(.x),
+                                                       chromend = end(.x),
+                                                       assembly = "hg19"))
+names(params_prosomere) <- map(prosomere_markers, ~ .x$name)
+
+```
+
+
+```{r prosomere_config}
+
+# load in track configuration
+prosomere_config <- prep_track_input(here("data/BentoBox_config/prosomere_thalamus.config.tsv"))
+
+```
+
+Make a summary figure of the tracks at these regions. In pseudocode:
+
+```
+
+for each region:
+-- for each sample:
+----- plot signal & annotation
+----- plot genome label
+
+```
+
+Generate figure:
+
+```{r prosomere_tracks, fig.width = 15, fig.height = 7, dependson = 'prosomere_config', opts.label = 'BentoBox', fig.keep = "last"}
+
+x_positions <- seq(0.5, 15, by = 1.75)
+y_positions <- seq(0.5, by = 0.4, length.out = nrow(prosomere_config))
+
+bb_pageCreate(width = 15, height = 7, default.units = "inches")
+
+for (i in seq_along(params_prosomere)) {
+    
+    x_i <- x_positions[i]
+    params_i <- params_prosomere[[i]]
+
+    # plot H3K27ac and H3K27me3
+    pwalk(list(prosomere_config$bw, prosomere_config$ID_paper, prosomere_config$Data, prosomere_config$Ymax, y_positions),
+          ~ bb_placeSignalAndLabel(data = ..1,
+                                   annotation = ..2,
+                                   color = palette_tracks[..3],
+                                   range = c(0, ..4),
+                                   y = ..5, x = x_i,
+                                   params = params_i,
+                                   width = 1.5,
+                                   height = 0.35,
+                                   fontsize = 4))
+    
+    # place 0.03in below last plot
+    bb_plotGenomeLabel(params = params_i, scale = "Kb", x = x_i, y = "0.03b", length = 1.5, fontsize = 8)
+    
+    bb_plotGenes(params = params_i, x = x_i, y = "0.05b", height = 1.5, width = 1.5,
+                 strandcolors = c("navy", "black"), fontcolors = c("navy", "black"),
+                 stroke = 0.05,
+                 just = c("left", "top"), default.units = "inches")
+    
+}
+
+bb_pageGuideHide()
+
+```
+
+
+
+
+<!-- END MATTER, insert reproducibility info -->
+
+```{r footer, echo = FALSE, results = 'asis', warning = FALSE, cache = FALSE}
+
+# Knit child document with header
+res <- knitr::knit_child(here("include", "footer.Rmd"), envir = environment(), quiet = TRUE)
+cat(res, sep = '\n')
+
+```
+
+<!-- END OF END MATTER -->

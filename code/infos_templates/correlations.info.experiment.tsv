@@ -1,0 +1,4 @@
+param	value
+reference_mat	data/scRNAseq/references/mouse_atlas_extended/seurat_joint_mean_expression.Rds
+annotation	data/scRNAseq/references/mouse_atlas_extended/joint_mouse_extended.annotation.ID_20201028_with_exclude.tsv
+reference_key	joint_mouse_extended
