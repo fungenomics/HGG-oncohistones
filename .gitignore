@@ -1,9 +1,6 @@
 
 *DS_Store*
 
-# Ignore any test files
-test*
-
 # Ok to keep a copy of this, but don't need to 
 # record every update
 run_slurm.sh
@@ -28,15 +25,15 @@ README.html
 
 # Custom
 
+README_internal.md
+.render_readme.sh
+
 # Exclude scratch
-scratch
-*/scratch
 code/_*
 */code/_*
 
-# Exclude IGV sessions
-IGV
-*/IGV
+# Exclude path
+include/project_root.txt
 
 # Exclude data
 data

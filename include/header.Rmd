@@ -22,19 +22,11 @@ message("Document index: ", doc_id)
 # Specify where to save outputs
 out        <- here("output", doc_id); dir.create(out, recursive = TRUE)
 figout     <- here("figures", doc_id); dir.create(figout, recursive = TRUE)
-cache      <- paste0("/lustre06/project/6004736/sjessa/cache/HGG-oncohistones/", basename(here()), "/", doc_id, "/")
+cache      <- paste0(readLines(here("include/project_root.txt")), basename(here()), "/", doc_id, "/")
 
 ```
 
 </details>
-
-The root directory of this project is:
-
-```{r here, echo = FALSE, cache = FALSE}
-
-message(here())
-
-```
 
 Outputs and figures will be saved at these paths, relative to project root:
 

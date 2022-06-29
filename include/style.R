@@ -60,6 +60,8 @@ palette_gfr <-c("ACVR1"          = "firebrick3",
 
 palette_acvr1_simple <- c("WT" = 1, "Mutant" = 16)
 
+palette_acvr1 <- c("ACVR1 mutant" = "orange", "ACVR1 KO" = "blue")
+
 palette_tp53 <- c("TP53 mut/loss" = "navy", "NA" = "gray90")
 
 # single-cell technology

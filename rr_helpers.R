@@ -1,126 +1,32 @@
 
-# Initialization ----
-
-#' Clean-up the rr repository of example files for initialization
-#' 
-#' A helper function for cleaning up a repository generated from the rr
-#' template, by removing the example documents & their outputs
-rr_initialize_cleanup <- function(dry_run = FALSE) {
+#' Run the important parts of the header.Rmd for interactive use, to establish
+#' the output and figures directories
+rr_i <- function() {
     
-    require(here)
+    library(here)
     
-    # For Yes/No prompts, treat a selection of 1 as TRUE, and 2 as FALSE
-    s2l <- function(x) ifelse(x == 1, TRUE, FALSE)
-    
-    # Delete the example documents & HTMLs
-    del_ex <- s2l(menu(c("Yes", "No"), title = paste0("Delete example Rmds and corresponding HTMLs? i.e.\n",
-                                                      "  git rm analysis/01-first_step.{Rmd,html}\n",
-                                                      "  git rm analysis/02-second_step.{Rmd,html}")))
-    if (del_ex & !dry_run) {
+    if (R.version$major == "3") {
         
-        system(paste(paste0("git rm ", Sys.glob(here("analysis/01-first_step.*"))), collapse = ";"))
-        system(paste(paste0("git rm ", Sys.glob(here("analysis/02-second_step.*"))), collapse = ";"))
+        out        <<- here::here("output", doc_id); dir.create(out, recursive = TRUE, showWarnings = FALSE)
+        figout     <<- here::here("figures", doc_id); dir.create(figout, recursive = TRUE, showWarnings = FALSE)
         
-    }
-    
-    # Delete the example output / figures
-    del_out <- s2l(menu(c("Yes", "No"), title = paste0("Delete example outputs/figures? i.e.\n",
-                                                       "  git rm output/01/mtcars.{tsv,desc}\n",
-                                                       "  git rm figures/01/pressure-1.{png,pdf}\n",
-                                                       "  git rm figures/02/figure2-*")))
-    if (del_out & !dry_run) {
+    } else if (R.version$major == "4" & grepl("narval", here::here())) {
         
-        system(paste(paste0("git rm ", Sys.glob(here("output/01/mtcars*"))), collapse = ";"))
-        system(paste(paste0("git rm ", Sys.glob(here("figures/01/pressure-1*"))), collapse = ";"))
-        system(paste(paste0("git rm ", Sys.glob(here("figures/02/figure2-*"))), collapse = ";"))
+        out        <<- here::here("R-4/output", doc_id); dir.create(out, recursive = TRUE, showWarnings = FALSE)
+        figout     <<- here::here("R-4/figures", doc_id); dir.create(figout, recursive = TRUE, showWarnings = FALSE)
+        
+    } else if (R.version$major == "4" & grepl("hydra", here::here())) {
+        
+        out        <<- here::here("R-4-hydra/output", doc_id); dir.create(out, recursive = TRUE, showWarnings = FALSE)
+        figout     <<- here::here("R-4-hydra/figures", doc_id); dir.create(figout, recursive = TRUE, showWarnings = FALSE)
         
     }
     
-    # Clear README file from rr repository
-    del_readme <- s2l(menu(c("Yes", "No"), title = "Clear README.md?"))
-    if (del_readme & !dry_run) {
-        file.remove(here("README.md"))
-        file.create(here("README.md"))
-    }
-    
-    # Delete the images that are used for demo in the rr repository
-    del_img <- s2l(menu(c("Yes", "No"), title = "Delete images used in rr repository README?"))
-    # ... except for the lab logo, needed in the template
-    img_paths <- setdiff(list.files(here("include/img"), full.names = TRUE),
-                         here("include/img/kleinman_lab_logo.png"))
-    if (del_img & !dry_run) {
-        
-        system(paste(paste0("git rm ", img_paths), collapse = ";"))
-        
-    }
+    message("Output: ", out)
+    message("Figures: ", figout)
     
 }
 
-
-#' Initialize a reproducible research repository
-#' 
-#' A function to setup a new repository from the rr template, by customizing
-#' templates / headers with author info and project info. Interactively prompts
-#' user for permission to delete files, and for the following information to
-#' update templates:
-#'  * Author name(s)
-#'  * Contact email address
-#'  * Short project name
-#'  * Link to repository on GitHub (or other link)
-#'
-#' @param dry_run Logical, whether to actually perform the changes. Default: FALSE
-#'
-#' @return Nothing
-rr_initialize <- function(dry_run = FALSE) {
-    
-    require(here)
-    
-    if (dry_run) message("Performing a dry-run of repository initialization...\n")
-    
-    rr_initialize_cleanup(dry_run = dry_run)
-    
-    # Replace the author name
-    name <- readline("Author name(s): ") 
-    # ....Construct sed command
-    cmd_update_template_name <- paste0("sed -i '' '3s/Selin Jessa/", name, "/g' ", here("include/template.Rmd"))
-    print(cmd_update_template_name)
-    # ...Execute command
-    if (!dry_run) system(cmd_update_template_name)
-    
-    # Replace author email
-    email <- readline("Contact email: ")
-    cmd_update_template_email <- paste0("sed -i '' '3s/selin.jessa@mail.mcgill.ca/", email, "/g' ", here("include/template.Rmd"))
-    print(cmd_update_template_email)
-    if (!dry_run) system(cmd_update_template_email)
-    
-    # Replace project name in header,
-    # and change name of .Rproj file
-    # and add to README
-    project_name <- readline("Short project name (no spaces or slashes), e.g. matching GitHub repo name: ")
-    cmd_update_proj_name <- paste0("sed -i '' 's/rr project/", project_name, " project/g' ", here("include/header.html"))
-    print(cmd_update_proj_name)
-    cmd_update_Rproj_name <- paste0("mv ", here("rr.Rproj"), project_name, ".Rproj")
-    print(cmd_update_Rproj_name)
-    if (!dry_run) {
-        system(cmd_update_proj_name)
-        system(cmd_update_Rproj_name)
-        writeLines(project_name, here("README.md"))
-    }
-    
-    # Replace github source link
-    github_link <- readline("Link to GitHub repository: ")
-    cmd_update_proj_link <- paste0("sed -i '' 's#https://github.com/sjessa/rr/#", github_link, "#g' ", here("include/header.html"))
-    print(cmd_update_proj_link)
-    if (!dry_run) system(cmd_update_proj_link)
-    
-    message("\nInitialization complete. To start an analysis, copy ",
-            here("include/template.Rmd"),
-            " to the analysis folder.")
-    
-}
-
-
-# Helpers ----
 
 #' The here() function always returns a full path from the root directory
 #' This function returns a path from the project root for less clutter
@@ -137,10 +43,6 @@ path_from_here <- function(path) {
 
 # Savers / loaders ----
 
-rr_save <- function() {
-    
-    
-}
 
 
 #' A wrapper function for writing a description with a TSV
@@ -172,7 +74,7 @@ rr_write_tsv <- function(df, path, desc, verbose = TRUE) {
     cat(desc, file = desc_path, sep = "\n")
     
     # Output a message with path to desc file
-    if (verbose) message("...writing description of ", basename(path), " to ", path_from_here(desc_path))
+    if (verbose) message("...writing description of ", basename(as.character(path)), " to ", path_from_here(desc_path))
     
 }
 
@@ -250,11 +152,6 @@ rr_ggplot <- function(df, plot_num, ...) {
     
 }
 
-
-rr_load <- function() {
-    
-    
-}
 
 
 #' A wrapper function for reading a TSV along with its metadata & description
