@@ -24,6 +24,7 @@ Contents:
      * [scMultiome](https://github.com/fungenomics/HGG-oncohistones-stable#single-cell-multiome-data)
      * [Cell annotations matching the paper](https://github.com/fungenomics/HGG-oncohistones-stable#cell-annotations-matching-the-paper)
 * [Re-analysis of human fetal brain scRNAseq data](https://github.com/fungenomics/HGG-oncohistones-stable#human-fetal-brain-scrnaseq-data)
+* [Citation](https://github.com/fungenomics/HGG-oncohistones#citation)
 
 
 ## Contents of this repository
