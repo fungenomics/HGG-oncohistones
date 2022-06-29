@@ -1,0 +1,1034 @@
+---
+title: "QC and pre-processing report"
+date: "`r format(Sys.time(), '%Y/%m/%d %H:%M:%S')`"
+output:
+  html_document:
+    df_print: paged
+    theme: "flatly"
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+params:
+  run: default
+  technology: NULL
+  config: NULL
+  assets: NULL
+---
+
+# Config
+
+Load libraries and functions:
+
+```{r load_libraries, cache = FALSE, message = FALSE, warning = FALSE}
+
+# libraries from CRAN
+library(dplyr)
+library(tidyr)
+library(readr)
+library(data.table)
+library(glue)
+library(DT)
+library(stringr)
+library(kableExtra)
+library(RColorBrewer)
+library(ggplot2)
+library(cowplot)
+library(Seurat)
+
+# custom functions
+source(file.path(params$assets, "resources", "functions.R"))
+
+```
+
+Check if a run with this name already exists, and exit on an error if so:
+
+```{r check_run_exists, eval = TRUE}
+
+run <- params$run
+
+# this is to ensure that a) runs are not overwritten by accident, and b)
+# the contents of a run reflects what's actually in the config file
+if (dir.exists(glue("output/{run}.preprocessing/"))) {
+  
+  stop("A run with this name, ", run, " already exists. Over-writing ",
+       "is not enabled; to create another iteration of the same run, remove ",
+       "outputs and figures folders from the previous run with \nrm -rf output/",
+       run, ".preprocessing/ \nrm -rf figures/", run, ".preprocessing/",
+       "\nrm ", run, ".preprocessing.html \nTo create a different run, use a custom ",
+       ".preprocessing.config.tsv with a different prefix.")
+  
+}
+
+```
+
+Read in the config file for this run. These parameters can be
+altered by creating a copy of the `default.preprocessing.config.tsv` file, with
+a different prefix.
+
+```{r read_config, message = FALSE, warning = FALSE}
+
+# if the default keyword is used, the default file *must* be used
+if (params$run == "default") {
+  
+  config_tsv <- read_tsv(file.path(params$assets, "default.preprocessing.config.tsv"))
+  message("Since the run name is 'default'; this iteration is run with default ",
+          "config file at ",
+          file.path(params$assets, "default.preprocessing.config.tsv"),
+          ". To create a run with custom config, choose a run name other",
+          " than 'default'.")
+  
+} else { # otherwise, the custom config file will be used
+  
+  # read in specification & print
+  config_tsv <- read_tsv(params$config)
+  
+}
+
+config_tsv
+
+# coerce to a list of param:value pairs, and make sure numeric parameters are numeric type
+config <- as.list(tibble::deframe(config_tsv[, c(1, 2)]))
+
+# automatically convert each config element to the right type
+config <- lapply(config, type.convert, as.is = TRUE)
+
+```
+
+
+Set up directory structure and confirm current working directory:
+
+```{r setup_dir}
+
+# print current working directory
+getwd()
+
+# specify and create output and figures folders with run prefix
+output_dir <- glue("output/{params$run}.preprocessing/")
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+figures_dir <- paste0(knitr::opts_knit$get("root.dir"), "/figures/", glue("{params$run}.preprocessing"), "/")
+dir.create(figures_dir, showWarnings = FALSE, recursive = TRUE)
+
+# save the config to the output
+file.copy(params$config, file.path(output_dir, "config.tsv"), overwrite = TRUE)
+
+```
+
+Set up R markdown:
+
+```{r setup}
+
+knitr::opts_chunk$set(
+  # Display PNG in HTML file, but also keep PDF outputs in figures folder
+  dev = c("png", "pdf"), 
+  # Keep all the figures produced in a chunk
+  fig.keep = "all",      
+  # Save all figures to this output folder
+  fig.path = figures_dir,
+  # Do not cache results
+  cache = FALSE)
+
+# not used
+# cache.path = file.path(knitr::opts_knit$get("root.dir"), ".cache/")
+
+# don't use dingbats in PDFs, in order to create Illustrator-friendly figures
+grDevices::pdf.options(useDingbats = FALSE)
+
+```
+
+Specify sample and project:
+
+```{r init_var}
+
+# get all path and split into a vector based on /
+path_vector <- unlist(strsplit(getwd(), split = "/")) 
+
+# get the sample ID, which is the second-to-last element
+(sample_id  <- path_vector[length(path_vector) - 1])
+
+# get the project ID, which is the third-to-last element
+(project_id <- path_vector[length(path_vector) - 2])
+
+```
+
+# Initialization and initial filtering
+
+## Load cellranger output and initialize Seurat object
+
+As input, we use the filtered matrix output by cellranger, which distinguishes
+barcodes representing cells from background.
+
+```{r read_10x}
+
+# if the cellranger directory is not specified, infer it based on the default directory
+# names for each technology. Otherwise (only possible in a non-default run),
+# use the specified cellranger directory
+cellranger_dir <- ifelse(is.na(config$cellranger_dir),
+                         switch(params$technology,
+                                "10X_sc_chromium_3prim" = "cellranger_count",
+                                "10X_sn_chromium_3prim" = "cellranger_count_premrna"),
+                         config$cellranger_dir)
+
+# find & load the filtered matrices in the cellranger directory;
+# a wildcard is used because cellranger v2 uses a "filtered_gene_bc_matrix.h5"
+# naming convention, while cellranger v3 uses "filtered_feature_bc_matrix.h5"
+h5_file          <- list.files(file.path("..", cellranger_dir),
+                               pattern = glob2rx("filtered*.h5"), full.names = TRUE)
+
+# if the h5 is not found, use the 3 files instead
+if (length(h5_file) == 0) {
+  
+  trio_dir <- list.files(file.path("..", cellranger_dir),
+                         pattern = glob2rx("filtered*"), full.names = TRUE, include.dirs = TRUE)
+  cellranger_matrix <- Seurat::Read10X(trio_dir)
+  
+} else {
+  
+  cellranger_matrix <- Seurat::Read10X_h5(h5_file)
+  
+}
+
+```
+
+Create the Seurat object, which applies two filters on the data. First, only
+genes which are detected in at least `config$min_cells` are retained. No
+further filtering on genes is performed. Second, only cells with at
+least `config$min_features` are retained. Note that an additional filter on number
+of features detected occurs in the next section, however an initial hard cutoff
+is used here in order to minimize the data that's processed with Seurat.
+
+```{r create_seurat}
+
+seurat_prefilt <- CreateSeuratObject(
+  counts       = cellranger_matrix,
+  min.cells    = config$min_cells,    # specifies the min number of cells in which each gene must be detected
+  min.features = config$min_features, # specifies the min number of genes which must be detected in each cell
+  project      = sample_id            # populates the project.name slot in the Seurat object
+)
+
+# add the sample ID and cell barcodes to the metadata -- to facilitate later joining
+# data from different samples, the cell barcode is prefixed with the sample ID
+seurat_prefilt@meta.data$sample.id    <- sample_id
+seurat_prefilt@meta.data$cell.barcode <- paste0(sample_id, "_", rownames(seurat_prefilt@meta.data))
+
+```
+
+## Compute mitochondrial and ribosomal content
+
+For quality control, we assess the mitochondrial content and ribosomal content
+at the single-cell level, using the proportion of reads which map to mitochondrial
+genes, or ribosomal protein genes, respectively.
+
+```{r compute_mito_ribo}
+
+# identify mitochondrial genes, which depends on the species, due to gene name differences
+if (config$species == "h_sapiens") {
+  mito_genes <- grep("^MT-", rownames(GetAssayData(object = seurat_prefilt)), value = TRUE)
+} else if (config$species == "m_musculus") {
+  mito_genes <- grep("^mt-", rownames(GetAssayData(object = seurat_prefilt)), value = TRUE)
+}
+
+# compute, for each cell, the proportion of reads in mitochondrial genes, and add to the metadata
+percent_mito <- Matrix::colSums(GetAssayData(object = seurat_prefilt)[mito_genes, ]) /
+  Matrix::colSums(GetAssayData(object = seurat_prefilt)) * 100
+seurat_prefilt <- AddMetaData(seurat_prefilt, percent_mito, "percent.mito")
+
+# identify ribosomal genes, which depends on the species, due to gene name differences
+if (config$species == "h_sapiens") {
+  ribo_genes <- grepl("^RPS|^RPL|^MRPS|^MRPL", rownames(GetAssayData(object = seurat_prefilt)))
+} else if (config$species == "m_musculus") {
+  ribo_genes <- grepl("^Rps|^Rpl|^Mrps|^Mrpl", rownames(GetAssayData(object = seurat_prefilt)))
+}
+
+# compute, for each cell, the proportion of reads in ribsomal genes, and add to the metadata
+percent_ribo <- Matrix::colSums(GetAssayData(object = seurat_prefilt)[ribo_genes, ]) /
+  Matrix::colSums(GetAssayData(object = seurat_prefilt)) * 100
+seurat_prefilt <- AddMetaData(seurat_prefilt, percent_ribo, "percent.ribo")
+
+```
+
+## Initialize warnings
+
+```{r warnings}
+
+warnings <- list("LOW_N_CELLS"        = FALSE,
+                 "HIGH_MITO"          = FALSE,
+                 "HIGH_PROP_FILTERED" = FALSE,
+                 "LOW_AVG_UMI"        = FALSE,
+                 "CC_ASSIGNMENT"     = FALSE,
+                 "SMALL_CLUSTERS"     = FALSE)
+
+```
+
+# QC and filtering
+
+In this section, we first load the cellranger QC metrics and display them here.
+We then compute four QC metrics for scRNAseq, filter cells based on the distributions
+of these metrics, and then assess the distributions of these metrics after filtering.
+
+## Generate thresholds
+
+The thresholds used are a combination of hard cutoffs and cutoffs computed based
+on the distribution of each metric within the sample. In the case of `min_features`,
+this allows to set a permissive hard cutoff, and use a more stringent cutoff if the quality
+of the sample allows. In the case of `max_mito`, this allows to set a stringent hard cutoff,
+and use a more permissive cutoff if the quality of the sample necessitates doing
+so in order to avoid losing the majority of cells.
+
+```{r filtering_param}
+
+(thresholds <- data.frame(
+  # te minimum number of features will be the greater of:
+  # 400, or 2 standard deviations below the mean
+  min_features = max(400, round(mean(seurat_prefilt@meta.data$nFeature_RNA) -
+                                  2*sd(seurat_prefilt@meta.data$nFeature_RNA))),
+  max_features = round(mean(seurat_prefilt@meta.data$nFeature_RNA) +
+                         2*sd(seurat_prefilt@meta.data$nFeature_RNA)),
+  min_mito     = 0,
+  # by default,
+  # the max mitochondrial content will be the maximum of:
+  # 5%, or 2 standard deviations above the mean
+  # the parameter config$max_mito allows to set a hard upper threshold,
+  # which takes precedence
+  max_mito     = ifelse(!is.na(config$max_mito),
+                        config$max_mito,
+                        max(5, round(mean(seurat_prefilt@meta.data$percent.mito) +
+                                       2*sd(seurat_prefilt@meta.data$percent.mito))
+                        )
+  ),
+  # set a max of 0 in case the value 2 standard deviations below the mean
+  # is negative
+  min_umi      = max(0, round(mean(seurat_prefilt@meta.data$nCount_RNA) -
+                                2*sd(seurat_prefilt@meta.data$nCount_RNA))),
+  max_umi      = round(mean(seurat_prefilt@meta.data$nCount_RNA) +
+                         2*sd(seurat_prefilt@meta.data$nCount_RNA))
+))
+
+# given the resulting thresholds, call a function to identify the cells
+# which pass all filters, which returns barcodes
+keep_cells <- get_cells_to_filter(
+  seurat    = seurat_prefilt,
+  min_features = thresholds$min_features,
+  max_features = thresholds$max_features,
+  min_mito  = thresholds$min_mito,
+  max_mito  = thresholds$max_mito,
+  min_umi   = thresholds$min_umi,
+  max_umi   = thresholds$max_umi
+)
+
+```
+
+## QC metrics before filtering
+
+Visualize each QC metric:
+
+```{r vln_QC_before_filters, fig.width = 10, fig.height = 6}
+
+# violin plots
+plot_grid(VlnPlot(seurat_prefilt, c("nFeature_RNA"), pt.size = -1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat_prefilt, c("nCount_RNA"), pt.size = -1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat_prefilt, c("percent.mito"), pt.size = -1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat_prefilt, c("percent.ribo"), pt.size = -1) +
+            theme(legend.position = "none"),
+          ncol = 4)
+
+# regenerate with points
+plot_grid(VlnPlot(seurat_prefilt, c("nFeature_RNA"), pt.size = 0.1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat_prefilt, c("nCount_RNA"), pt.size = 0.1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat_prefilt, c("percent.mito"), pt.size = 0.1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat_prefilt, c("percent.ribo"), pt.size = 0.1) +
+            theme(legend.position = "none"),
+          ncol = 4)
+
+```
+
+## Filtering and QC metrics after filtering
+
+Using the barcodes which passed all filters, subset the Seurat objects to generate
+a filtered object:
+
+```{r filter_seurat}
+
+# subset the object using the barcodes of the cells to keep
+seurat <- subset(seurat_prefilt, cells = keep_cells)
+
+seurat
+seurat_prefilt
+
+```
+
+Regenerate the violin plots after filtering:
+
+```{r vln_QC_after_filters, fig.width = 10, fig.height = 6}
+
+# violin plots
+plot_grid(VlnPlot(seurat, c("nFeature_RNA"), pt.size = -1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat, c("nCount_RNA"),   pt.size = -1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat, c("percent.mito"), pt.size = -1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat, c("percent.ribo"), pt.size = -1) +
+            theme(legend.position = "none"),
+          ncol = 4)
+
+plot_grid(VlnPlot(seurat, c("nFeature_RNA"), pt.size = 0.1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat, c("nCount_RNA"),   pt.size = 0.1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat, c("percent.mito"), pt.size = 0.1) +
+            theme(legend.position = "none"),
+          VlnPlot(seurat, c("percent.ribo"), pt.size = 0.1) +
+            theme(legend.position = "none"),
+          ncol = 4)
+
+```
+
+
+## Output summary stats and filtering thresholds
+
+For each of the metrics we filtered on, we save the min, max and mean before and after filtering, as well as the lower and upper thresholds used.
+
+```{r filtering_metrics}
+
+filtering_criteria <- c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo")
+
+# compute summary stats for each metric
+filtering_metrics <- sapply(filtering_criteria, function(criterion) {
+  
+  min_pre   <- round(min(seurat_prefilt@meta.data  %>% pull(criterion)), 2)
+  mean_pre  <- mean(seurat_prefilt@meta.data %>% pull(criterion))
+  max_pre   <- max(seurat_prefilt@meta.data  %>% pull(criterion))
+  sd_pre    <- sd(seurat_prefilt@meta.data   %>% pull(criterion))
+  
+  min_post  <- min(seurat@meta.data  %>% pull(criterion))
+  mean_post <- mean(seurat@meta.data %>% pull(criterion))
+  max_post  <- max(seurat@meta.data  %>% pull(criterion))
+  sd_post   <- sd(seurat@meta.data   %>% pull(criterion))
+  
+  return(c("min.preQC"   = min_pre,
+           "mean.preQC"  = mean_pre,
+           "max.preQC"   = max_pre,
+           "sd.preQC"    = sd_pre,
+           "min.postQC"  = min_post,
+           "mean.postQC" = mean_post,
+           "max.postQC"  = max_post,
+           "sd.postQC"   = sd_post))
+  
+})
+
+# round to 2 decimal places
+filtering_metrics <- apply(filtering_metrics, 2, round, 2)
+
+# transform into a dataframe
+filtering_metrics <- filtering_metrics %>%
+  t() %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column(var = "criterion") %>%
+  dplyr::select(criterion, min.preQC, min.postQC, max.preQC, max.postQC, mean.preQC, mean.postQC, sd.preQC, sd.postQC)
+
+# add thresholds
+filtering_metrics$min.threshold <- c(thresholds$min_features,
+                                     thresholds$min_umi,
+                                     thresholds$min_mito,
+                                     # No min threshold used for % ribo
+                                     NA)
+
+filtering_metrics$max.threshold <- c(thresholds$max_features,
+                                     thresholds$max_umi,
+                                     thresholds$max_mito,
+                                     # No max threshold used for % ribo
+                                     NA)
+filtering_metrics
+
+# compute number of cells before and after filtering
+N_cells_metrics <- data.frame(
+  "N_cells_before" = dim(seurat_prefilt@meta.data)[1],
+  "N_cells_after"  = dim(seurat@meta.data)[1]) %>%
+  mutate(Prop_kept = round(N_cells_after / N_cells_before, 2))
+
+N_cells_metrics
+
+```
+
+
+This report will register warnings if:
+
+- there are few cells after filtering (<1000)
+- more than 40% of cells were filtered out
+- the max mitochondrial content after filtering is > 5% (indicating a higher threshold needed to be used)
+- the average number of UMIs after filtering is < 2000
+
+The warnings will be output at the end of the report, and saved as a TSV
+if any warning flags are `TRUE`.
+
+
+```{r qc_warnings}
+
+if (N_cells_metrics$N_cells_after < 1000) warnings$LOW_N_CELLS <- TRUE
+if (N_cells_metrics$Prop_kept < 0.6) warnings$HIGH_PROP_FILTERED <- TRUE
+if (filtering_metrics[filtering_metrics$criterion ==
+                      "nCount_RNA", ]$mean.postQC < 2000) warnings$LOW_AVG_UMI <- TRUE
+if (filtering_metrics[filtering_metrics$criterion ==
+                      "percent.mito", ]$max.postQC > 5) warnings$HIGH_MITO <- TRUE
+
+```
+
+# Normalization and scaling
+
+Normalization is performed using two different methods. `SCTransform` normalizes UMI data
+using a variance stabilized transform based on a negative binomial regression model, and
+simultaneously regresses unwanted sources of variation (by default, number
+of UMIs and mitochondrial content). The sequence of `NormalizeData`,
+`FindVariableFeatures`, and `ScaleData` comprise the second method, which scale
+counts to 10,000 UMIs per cell, log2-transform counts, and then regress out
+unwanted sources of variation.
+
+The log-normalized
+values are set as the default assay in the Seurat object, but the SCTransform values
+are saved in the `SCTransform` assay of the Seurat object, accessible with
+`seurat[["SCT"]]`.
+
+
+```{r seurat_norm_scale, message = FALSE, warning = FALSE}
+
+# normalization 1: scale counts to 10000 UMIs per cell, and log2-transform the counts
+# set the default assay to RNA to run the log-normalization & scaling
+seurat <- seurat %>% 
+  NormalizeData(normalization.method = "LogNormalize",
+                scale.factor         = 10000) %>% 
+  # identify variable genes
+  FindVariableFeatures(mean.function       = ExpMean,
+                       dispersion.function = LogVMR) %>%
+  # regress out variables which are sources of unwanted variation, and z-score data
+  ScaleData(vars.to.regress = unlist(str_split(config$var_regress, ",")))
+
+# normalization 2: using SCTransform
+# this command also identifies variable features and produces scaled values
+seurat <- seurat %>%
+  SCTransform(vars.to.regress = unlist(str_split(config$var_regress, ",")), verbose = FALSE)
+
+# choose the normalization method to use for downstream analysis
+DefaultAssay(object = seurat) <- switch(config$normalization,
+                                        "LogNormalize" = "RNA",
+                                        "SCTransform"  = "SCT")
+
+# confirm the default assay set
+DefaultAssay(seurat)
+
+```
+
+
+
+# Dimensionality reduction and clustering
+
+```{r seurat_dim_reduction}
+
+seurat <- seurat %>%
+  # compute PCA, based on scaled data
+  RunPCA(pc.genes        = VariableFeatures(.),
+         npcs            = config$pcs_compute,
+         ndims.print     = 1:5,
+         nfeatures.print = 5) %>%
+  # compute tSNE embedding, based on retained PCs
+  RunTSNE(dims = 1:config$pcs_keep, verbose = FALSE, seed.use = config$seed) %>%
+  # compute UMAP embedding, based on retained PCs
+  RunUMAP(dims = 1:config$pcs_keep, verbose = FALSE, seed.use = config$seed)
+
+```
+
+```{r pca_elbow_plot}
+
+ElbowPlot(seurat, ndims = config$pcs_compute)
+
+# call a custom function to compute the variance and cumulative variance
+# explained by the top 10 PCs
+get_variance_explained(seurat, n = 10)
+
+```
+
+
+Visualize genes with the highest loadings for the top PCs:
+
+```{r pca_loadings, fig.width = 15, fig.height = 6}
+
+VizDimLoadings(seurat, dims = 1:3, reduction = "pca", ncol = 3)
+
+```
+
+Perform SNN clustering:
+
+```{r clustering}
+
+# step 1. identify neighbours
+seurat <- FindNeighbors(seurat,
+                        reduction = "pca",
+                        dims      = 1:config$pcs_keep,
+                        verbose   = TRUE,
+                        nn.eps    = 0.5)
+
+```
+
+```{r tsne_clustering_resolution, fig.height = 8, fig.width = 14, message = FALSE}
+
+# step 2. identify communities at various resolutions
+# to repeat the clustering at various resolutions, we create a function
+# with the parameters that will be held constant, and call it several time
+# with different values for resolution
+clustering_fun <- purrr::partial(FindClusters,
+                                 seurat,
+                                 verbose = FALSE,
+                                 n.start = 10,
+                                 random.seed = config$seed)
+
+seurat <- clustering_fun(resolution = 0.6)
+
+p1 <- DimPlot(object = seurat, reduction = "tsne") +
+  ggtitle("res 0.6")
+
+seurat <- clustering_fun(resolution = 0.8)
+
+p2 <- DimPlot(object = seurat, reduction = "tsne") +
+  ggtitle("res 0.8")
+
+seurat <- clustering_fun(resolution = 1)
+
+p3 <- DimPlot(object = seurat, reduction = "tsne") +
+  ggtitle("res 1")
+
+seurat <- clustering_fun(resolution = 2)
+
+p4 <- DimPlot(object = seurat, reduction = "tsne") +
+  ggtitle("res 2")
+
+seurat <- clustering_fun(resolution = config$clustering_resolution)
+
+p5 <- DimPlot(object = seurat, reduction = "tsne") +
+  ggtitle(paste0("chosen resolution: ", config$clustering_resolution))
+
+plot_grid(p1, p2, p3, p4, p5, ncol = 3)
+
+```
+
+
+Save the chosen resolution as the clustering assighnment for the object, although 
+the other solutions will be saved in the metadata. We also assign a custom colour palette with colours that are easier to distinguish than the default:
+
+```{r clustering_resolution, fig.height = 8, fig.width = 8}
+
+# the normalization method used will dictate the name of the columns
+# containing the clustering solutions
+# here, the RHS assembles a string, and if it matches a column in the object
+# metadata as expected, Seurat will use that column to assign the active/default
+# cell identities (see examples in ?Seurat::Idents() for more details
+Idents(object = seurat) <- paste0(switch(config$normalization,
+                                         "LogNormalize" = "RNA",
+                                         "SCTransform"  = "SCT"),
+                                  "_snn_res.",
+                                  config$clustering_resolution)
+
+# set a new qualitative palette; this saves the palette to seurat@misc$colours
+seurat <- set_qual_pal(seurat)
+
+DimPlot(object = seurat, reduction = "tsne", cols = seurat@misc$colours) +
+  ggtitle(paste0("res ", config$clustering_resolution))
+DimPlot(object = seurat, reduction = "umap", cols = seurat@misc$colours) +
+  ggtitle(paste0("res ", config$clustering_resolution))
+
+```
+
+
+# Cell cycle scoring
+
+To score cells for their cell cycle activity, we use three different methods.
+
+First, we compute the mean expression of the cell cycle phase markers from Whitfield
+et al, 2002.
+
+```{r compute_cc_whitfield}
+
+cell.cycle.genes.whitfield.2002 <- data.table::fread(file.path(
+  params$assets,
+  "resources",
+  "CellCycleGeneList_1134_whitfield_2002_mice_gene_symbols.txt"))
+
+# compute cell cycle scores
+cc <- compute_cell_cycle_whitfield(seurat,
+                                   species = config$species,
+                                   return_scores = TRUE)
+
+# add the scores to the Seurat object metadata
+seurat <- AddMetaData(seurat,
+                      setNames(cc$g1.s.scores, cc$cell),
+                      "G1.S.score_Whitfield")
+seurat <- AddMetaData(seurat,
+                      setNames(cc$g2.m.scores, cc$cell),
+                      "G2.M.score_Whitfield")
+
+```
+
+Plotting the Whitfield cell cycle phase scores:
+
+```{r cell_cycle_whitfield, fig.width = 18, fig.height = 6}
+
+compute_cell_cycle_whitfield(seurat, species = config$species, return_scores = FALSE) +
+  scale_color_manual(values = seurat@misc$colours) +
+  theme_cowplot()
+
+```
+
+Next, we compute the scores using the method implemented in Seurat:
+
+```{r cell_cycle_seurat, fig.width = 9, fig.height = 8}
+
+# a list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat;
+# segregate this list into markers of G2/M phase and markers of S phase
+s_genes   <- cc.genes$s.genes
+g2m_genes <- cc.genes$g2m.genes
+
+seurat <- CellCycleScoring(seurat,
+                           s.features   = s_genes,
+                           g2m.features = g2m_genes)
+
+cc.markers <- switch(config$species,
+                     "h_sapiens" = c("PCNA", "TOP2A", "MCM6", "MKI67"),
+                     "m_musculus" = c("Pcna", "Top2a", "Mcm6", "Mki67"))
+
+RidgePlot(seurat, group.by = "Phase", features = cc.markers, ncol = 2)
+
+```
+
+Plot the correlation between the G2/M score from Seurat (y-axis) an the G2/M
+score based on the Whitfield genes (x-axis), as well as the correlation with TOP2A:
+
+```{r cell_cycle_correlation, fig.width = 14, fig.height = 4}
+
+phase_palette <- c("G1" = "#F8766D", "G2M" = "#00BA38", "S" = "#619CFF")
+
+p1 <- FeatureScatter(seurat, "G2.M.score_Whitfield", "G2M.Score",
+                     cols = seurat@misc$colours)
+
+p2 <- FeatureScatter(seurat, "G2.M.score_Whitfield", "G2M.Score",
+                     group.by = "Phase",
+                     cols = phase_palette)
+
+top2a_gene <- switch(config$species,
+                     "h_sapiens" = "TOP2A",
+                     "m_musculus" = "Top2a")
+
+if (top2a_gene %in% rownames(seurat)) {
+  
+  p3 <- FeatureScatter(seurat, top2a_gene, "G2M.Score",
+                       cols = seurat@misc$colours)
+  
+  p4 <- FeatureScatter(seurat, top2a_gene, "G2M.Score",
+                       group.by = "Phase",
+                       cols = phase_palette)
+  
+  cowplot::plot_grid(p1, p2, p3, p4, ncol = 4)
+  
+} else {
+  
+  # Top2a is not detected
+  cowplot::plot_grid(p1, p2)
+  
+}
+
+```
+
+```{r cell_cycle_correlation_g2m_cells_only, fig.width = 14, fig.height = 4}
+
+# show only cells assigned G2/M
+p1 <- FeatureScatter(seurat, "G2.M.score_Whitfield", "G2M.Score",
+                     cells = WhichCells(seurat, expression = Phase == "G2M"),
+                     cols = seurat@misc$colours)
+
+p2 <- FeatureScatter(seurat, "G2.M.score_Whitfield", "G2M.Score",
+                     group.by = "Phase",
+                     cols = phase_palette,
+                     cells = WhichCells(seurat, expression = Phase == "G2M"))
+
+if (top2a_gene %in% rownames(seurat)) {
+  
+  p3 <- FeatureScatter(seurat, top2a_gene, "G2M.Score",
+                       cells = WhichCells(seurat, expression = Phase == "G2M"),
+                       cols = seurat@misc$colours)
+  
+  p4 <- FeatureScatter(seurat, top2a_gene, "G2M.Score",
+                       group.by = "Phase",
+                       cols = phase_palette,
+                       cells = WhichCells(seurat, expression = Phase == "G2M"))
+  
+  cowplot::plot_grid(p1, p2, p3, p4, ncol = 4)
+  
+} else {
+  
+  cowplot::plot_grid(p1, p2)
+  
+}
+
+
+```
+
+Register a warning if more than half of the cells labelled G2M have
+low TOP2A expression:
+
+```{r top2a_check}
+
+if (top2a_gene %in% rownames(seurat)) {
+  
+  # subset to cells assigned as G2M phase
+  top2a_expr <- as.matrix(subset(seurat,
+                                 subset = Phase == "G2M")[["RNA"]][top2a_gene, ])
+  
+  # if more than 50% of cells assigned as G2M phase have low TOP2A expression,
+  # flag it
+  (prop_low_top2a <- (sum(top2a_expr < 1) / length(top2a_expr)))
+  if (prop_low_top2a > 0.5) warnings$CC_ASSIGNMENT <- TRUE
+  
+} else {
+  
+  # Top2a is not detected
+  warnings$CC_ASSIGNMENT <- TRUE
+  
+}
+
+```
+
+
+# Cluster-level QC
+
+Number of cells in each cluster:
+
+```{r number_cells}
+
+table(Idents(object = seurat))
+
+```
+
+Register a warning of more than a third of the clusters have fewer than 100 cells:
+
+```{r clustering_warning}
+
+# number of clusters with < 100 cells, divided by the total number of clusters
+if (sum(table(Idents(seurat)) < 100) /
+    length(levels(Idents(seurat))) > 0.33) warnings$SMALL_CLUSTERS <- TRUE
+
+```
+
+Visualize the QC metrics and cell cycle scores in the low-dimensional tSNE and
+UMAP embeddings, to determine whether clustering / dimensionality reduction is
+being driven by technical factors:
+
+```{r tsne_QC, fig.width = 18, fig.height = 15, warning = FALSE, message = FALSE}
+
+p0 <- DimPlot(object = seurat, reduction = "pca", cols = seurat@misc$colours)
+p1 <- DimPlot(object = seurat, reduction = "tsne", cols = seurat@misc$colours)
+p2 <- FeaturePlot(object = seurat, reduction = "tsne", features = "nFeature_RNA") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$nFeature_RNA))
+p3 <- FeaturePlot(object = seurat, reduction = "tsne", features = "nCount_RNA") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$nCount_RNA))
+p4 <- FeaturePlot(object = seurat, reduction = "tsne", features = "percent.mito") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$percent.mito))
+p5 <- FeaturePlot(object = seurat, reduction = "tsne", features = "percent.ribo") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$percent.ribo))
+p6 <- FeaturePlot(object = seurat, reduction = "tsne", features = "G1.S.score_Whitfield") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$G1.S.score))
+p7 <- FeaturePlot(object = seurat, reduction = "tsne", features = "G2.M.score_Whitfield") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$G2.M.score))
+
+plot_grid(p0, p1, p2, p3, p4, p5, p6, p7,
+          ncol = 3)
+
+```
+
+```{r umap_QC, fig.width = 18, fig.height = 15, warning = FALSE, message = FALSE}
+
+p0 <- DimPlot(object = seurat, reduction = "pca", cols = seurat@misc$colours)
+p1 <- DimPlot(object = seurat, reduction = "umap", cols = seurat@misc$colours)
+p2 <- FeaturePlot(object = seurat, reduction = "umap", features = "nFeature_RNA") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$nFeature_RNA))
+p3 <- FeaturePlot(object = seurat, reduction = "umap", features = "nCount_RNA") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$nCount_RNA))
+p4 <- FeaturePlot(object = seurat, reduction = "umap", features = "percent.mito") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$percent.mito))
+p5 <- FeaturePlot(object = seurat, reduction = "umap", features = "percent.ribo") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$percent.ribo))
+p6 <- FeaturePlot(object = seurat, reduction = "umap", features = "G1.S.score_Whitfield") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$G1.S.score))
+p7 <- FeaturePlot(object = seurat, reduction = "umap", features = "G2.M.score_Whitfield") +
+  scale_color_gradient2(low = "darkblue", mid = "lightgrey", high = "red",
+                        midpoint = mean(seurat@meta.data$G2.M.score))
+
+plot_grid(p0, p1, p2, p3, p4, p5, p6, p7,
+          ncol = 3)
+
+```
+
+Violin plots of the distribution of each QC metric in each cluster, with the 
+number of cells in each cluster indicated above each violin:
+
+```{r vln_QC_per_cluster, fig.width = 10, fig.height = 4, warning = FALSE}
+
+# make a dataframe of the number of cells per cluster
+clust_df <- data.frame(table(Idents(object = seurat)))
+clust_df[1, 2] <- paste0("N=", clust_df[1, 2])
+colnames(clust_df) <- c("ident", "N")
+
+vln_fun <- function(criterion) {
+  
+  # plot the labels at a value slightly below the max, to ensure they're shown
+  # within plot limits
+  clust_df$y <- max(seurat[[criterion]]) * 0.95
+  Seurat::VlnPlot(seurat, criterion, cols = seurat@misc$colours, pt.size = 0.5) +
+    theme(legend.position = "none") +
+    geom_text(data = clust_df, aes(label = N, x = ident, y = y))
+  
+}
+
+vln_fun("nFeature_RNA")
+vln_fun("nCount_RNA")
+vln_fun("percent.mito")
+vln_fun("percent.ribo")
+vln_fun("G1.S.score_Whitfield")
+vln_fun("G2.M.score_Whitfield")
+
+```
+
+
+
+# Cluster markers
+
+To identify cluster markers for each cluster for the specified resolution (`config$clustering_resolution`),
+
+```{r markers, warning = FALSE, message = FALSE}
+
+cluster_markers <- FindAllMarkers(object = seurat, verbose = FALSE)
+
+# display the top 30 per cluster
+cluster_markers %>%
+  dplyr::group_by(cluster) %>%
+  top_n(n = 30, wt = avg_logFC) %>%
+  dplyr::select(cluster, gene, everything()) %>%
+  DT::datatable(cluster_markers, filter = "top")
+
+write_tsv(cluster_markers, file.path(output_dir, "cluster_markers.tsv"))
+
+```
+
+```{r marker_heatmap, fig.width = 8, fig.height = 14}
+
+# Display a heatmap of the top 10 per cluster
+top10 <- cluster_markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+
+DoHeatmap(seurat, features = top10$gene, group.colors = seurat@misc$colours) +
+  NoLegend() +
+  scale_fill_gradientn(colors = c("#2166AC", "#E5E0DC", "#B2182B"))
+
+```
+
+# Save outputs
+
+All parameters and filtering metrics are saved both within the seurat
+object in the `seurat@misc` slot, as well as in the output directory.
+
+```{r save_parameters}
+
+# parameters are saved with the Seurat object
+seurat@misc$params$config     <- config
+seurat@misc$filtering_metrics <- filtering_metrics
+seurat@misc$n_cells           <- N_cells_metrics
+
+# write metrics/thresholds to file
+filtering_metrics_out <- filtering_metrics %>%
+  gather("metrics_name", "value", -criterion) %>%
+  unite("metrics", criterion:metrics_name, sep = "_") %>%
+  spread("metrics", "value") %>% 
+  bind_cols(N_cells_metrics)
+
+# include the short version of the most recent git repository SHA
+filtering_metrics_out$seurat_v3_workflow <- git2r::last_commit(params$assets)$sha %>% stringr::str_sub(1, 7)
+write_tsv(filtering_metrics_out, path = file.path(output_dir, "seurat_metrics.tsv"))
+
+```
+
+
+```{r save_seurat, cache = FALSE}
+
+save(seurat, file = file.path(output_dir, "seurat.Rda"))
+
+```
+
+
+# Warnings
+
+Summary of possible warnings, with issues uncovered in this analysis indicated
+in red:
+
+```{r warn_html, warning = FALSE}
+
+# convert the list to a data frame
+warnings_df <- data.frame(WARNING = names(warnings),
+                          FLAG    = unname(unlist(warnings)))
+
+# if there are any warnings, produce a file
+if (any(warnings)) write_tsv(warnings_df %>% filter(FLAG), file.path(output_dir, "warnings.tsv"))
+
+# generate a visual summary, colouring the warnings in red
+warnings_df$FLAG = cell_spec(warnings_df$FLAG, background = ifelse(warnings_df$FLAG, "red", "green"))
+
+warnings_df %>% 
+  kbl(escape = FALSE) %>% 
+  kable_styling(position = "center")
+
+```
+
+
+# Reproducibility
+
+This document was last rendered on:
+
+```{r time, echo = FALSE, cache = FALSE}
+
+message(Sys.time())
+
+```
+
+The git repository and last commit:
+
+```{r repo, echo = FALSE, cache = FALSE}
+
+git2r::repository(params$assets)
+
+```
+
+The R session info:
+
+<details>
+
+```{r sinfo, cache = FALSE, echo = FALSE}
+
+sessionInfo()
+
+```
+
+</details>
+
