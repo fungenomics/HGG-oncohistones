@@ -8,9 +8,6 @@ Link to repository: https://github.com/fungenomics/HGG-oncohistones
 
 This repository is archived on [Zenodo](https://doi.org/10.5281/zenodo.6647837).
 
-This repository contains code; please see the associated [Zenodo record](https://doi.org/10.5281/zenodo.6773261) for the processed data including counts matrices, cell annotations, and genome wide histone mark levels. Raw data have been deposited to GEO ([GSE188625](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE188625)) and EGA (EGAS00001005773).
-
-
 Contents:
 * [Contents of the repository](https://github.com/fungenomics/HGG-oncohistones-stable#contents-of-this-repository)
 * [Notes for reproducibility](https://github.com/fungenomics/HGG-oncohistones-stable#notes-for-reproducibility)
@@ -140,7 +137,7 @@ theme elements (`theme_min()`, `no_legend()`, `rotate_x()`, etc) are defined in 
 
 ###  Tables
 
-Supplementary tables (included with the manuscript) and processed data tables (on [Zenodo](https://doi.org/10.5281/zenodo.6773261)) were assembled from the following input/output/figure source data files:
+Supplementary tables (included with the manuscript) and processed data tables were assembled from the following input/output/figure source data files:
 
 | Supplementary table | Path |
 | ----- | ---- |
@@ -220,7 +217,7 @@ columns matching the analyses used in the paper:
 * `Cell_type_consensus_Jessa2022`--> consensus cell-type projection to the extended mouse atlas, based on agreement between Spearman correlation and at least one other cell-type projection method. Cells without a consensus are classified as "Uncertain".
 * `Malignant_normal_consensus_Jessa2022` --> assignment as normal or malignant, used to decide whether cells should be included in downstream analyses
 
-The cell annotations/metadata are included in [processed data deposition on Zenodo](https://doi.org/10.5281/zenodo.6773261).
+The cell annotations/metadata are included in the processed data deposition.
 
 
 ### Human fetal brain scRNAseq data
