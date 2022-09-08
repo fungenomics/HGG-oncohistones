@@ -282,7 +282,7 @@ rr_write_tsv(TABLE_hindbrain_qc,
 
 # Gather gene signatures
 
-First, load all cluster markers and filter out markers for samples/cluters that we'll exclude:
+First, load all cluster markers and filter out markers for samples/clusters that we'll exclude:
 
 ```{r generate_signatures, message = FALSE}
 

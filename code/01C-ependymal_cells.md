@@ -1,7 +1,7 @@
 ---
 title: "01C - Confirmation of malignant ependymal cells"
 author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
-date: "29 June, 2022"
+date: "08 September, 2022"
 params:
   resources: "NOT SPECIFIED"
 output:
@@ -91,8 +91,7 @@ set.seed(100)
 
 In this document, we confirm the identity of the cells projected to be
 ependymal-like based on the automated cell-type projections. This is done by scoring
-cells for other features (e.g. expression of the ependymal transcription FOXJ1 and its targets,
-re-examining the cNMF programs, and re-examining the inferCNV output).
+cells for other features (e.g. expression of the ependymal transcription FOXJ1 and its targets, re-examining the cNMF programs, and re-examining the inferCNV output).
 
 # Libraries
 
@@ -128,6 +127,8 @@ ggplot2::theme_set(theme_min())
 
 # Load data
 
+In this analysis, we specifically load samples with high ependymal content:
+
 
 
 ```r
@@ -140,7 +141,12 @@ high_epen <- c("P-6292_S-8579", # PFA
 
 
 
-Load data:
+Load data and add cell-level labels for visualization:
+
+* `Type_malig`: column labels cells as "Normal" if normal based on malignant/normal consensus calling, or their most similar cell type if Malignant
+* `Type_malig_inferCNV`: column labels cells as "Normal" if normal based on inferCNV calling, or their most similar cell type if Malignant
+* `Ependymal_binary` label: contains "Ependymal" or "Other" based on correlation cell type annotation
+
 
 
 
@@ -296,7 +302,7 @@ plot_grid(plotlist = feature_plots_dnah, ncol = 4, align = "h", axis = "tb")
 
 We can also directly assess the expression/enrichment of FOXJ1 target genes in these tumors.
 
-Load a list of Foxj1 targets from [Jacquet et al, 2009](https://pubmed.ncbi.nlm.nih.gov/19906869/):
+Load a list of Foxj1 targets from [Jacquet et al, 2009](https://pubmed.ncbi.nlm.nih.gov/19906869/). We convert these to human genes using [biomaRt](https://bioconductor.org/packages/release/bioc/html/biomaRt.html).
 
 
 
@@ -382,7 +388,7 @@ plot_grid(plotlist = feature_plots_foxj1_targets, ncol = 4, align = "h", axis = 
 
 In the two H3.1K27M samples with high ependymal content, cNMF independently
 identified a gene program among malignant cells which is most highly
-activate in these ependymal-like cells:
+activated in these ependymal-like cells:
 
 
 
@@ -490,7 +496,7 @@ knitr::include_graphics(glue("{figout}/cNMF_P-1713_S-1713_hm.png"))
 
 # Copy-number profiles
 
-Load gene annotaton used for CNV calling:
+Load gene annotation used for CNV calling:
 
 
 
@@ -629,7 +635,8 @@ plot_profile <- function(seurat, infercnv_out, outfile, cells, cluster_rows = TR
 
 </details>
 
-For this analysis, we'll plot separately the CNV profiles of normal cells,
+For this analysis, we focus on the two H3.1K27M samples with high proportions
+of malignant cells. We'll plot separately the CNV profiles of normal cells,
 malignant cells projected to the ependymal class, and malginant cells with
 other identities.
 
@@ -723,7 +730,7 @@ This document was last rendered on:
 
 
 ```
-## 2022-06-29 10:29:30
+## 2022-09-08 15:01:00
 ```
 
 
@@ -735,7 +742,7 @@ The git repository and last commit:
 ```
 ## Local:    master /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public
 ## Remote:   master @ origin (git@github.com:fungenomics/HGG-oncohistones.git)
-## Head:     [009cdf0] 2022-06-29: Add README and update infrastructure
+## Head:     [4101e76] 2022-09-08: Update README.md
 ```
 
 
@@ -765,405 +772,173 @@ The R session info:
 ## ─ Session info ───────────────────────────────────────────────────────────────
 ##  setting  value                           
 ##  version  R version 3.6.1 (2019-07-05)    
-##  os       Rocky Linux 8.5 (Green Obsidian)
+##  os       Rocky Linux 8.6 (Green Obsidian)
 ##  system   x86_64, linux-gnu               
 ##  ui       X11                             
 ##  language (EN)                            
 ##  collate  en_CA.UTF-8                     
 ##  ctype    en_CA.UTF-8                     
 ##  tz       EST5EDT                         
-##  date     2022-06-29                      
+##  date     2022-09-08                      
 ## 
 ## ─ Packages ───────────────────────────────────────────────────────────────────
-##  ! package              * version    date       lib
-##  P abind                  1.4-5      2016-07-21 [?]
-##  P AnnotationDbi          1.48.0     2019-10-29 [?]
-##  P ape                    5.5        2021-04-25 [?]
-##  P argparse               2.0.3      2020-10-19 [?]
-##  P askpass                1.1        2019-01-13 [?]
-##  P assertthat             0.2.1      2019-03-21 [?]
-##  P beeswarm               0.3.1      2021-03-07 [?]
-##  P Biobase                2.46.0     2019-10-29 [?]
-##  P BiocFileCache          1.10.2     2019-11-08 [?]
-##  P BiocGenerics           0.32.0     2019-10-29 [?]
-##  P BiocParallel           1.20.1     2019-12-21 [?]
-##  P biomaRt              * 2.42.1     2020-03-26 [?]
-##  P bit                    4.0.4      2020-08-04 [?]
-##  P bit64                  4.0.5      2020-08-30 [?]
-##  P bitops                 1.0-7      2021-04-24 [?]
-##  P blob                   1.2.1      2020-01-20 [?]
-##  P bslib                  0.2.5      2021-05-12 [?]
-##  P callr                  3.7.0      2021-04-20 [?]
-##  P caTools                1.18.2     2021-03-28 [?]
-##  P cellranger             1.1.0      2016-07-27 [?]
-##  P cli                    2.5.0      2021-04-26 [?]
-##  P cluster                2.1.0      2019-06-19 [?]
-##  P coda                   0.19-4     2020-09-30 [?]
-##  P codetools              0.2-16     2018-12-24 [?]
-##  P coin                   1.4-1      2021-02-08 [?]
-##  P colorspace             2.0-1      2021-05-04 [?]
-##  P cowplot              * 1.1.1      2020-12-30 [?]
-##  P crayon                 1.4.1      2021-02-08 [?]
-##  P curl                   4.3.1      2021-04-30 [?]
-##  P data.table             1.14.0     2021-02-21 [?]
-##  P DBI                    1.1.1      2021-01-15 [?]
-##  P dbplyr                 2.1.1      2021-04-06 [?]
-##  P DelayedArray           0.12.3     2020-04-09 [?]
-##  P deldir                 0.2-10     2021-02-16 [?]
-##  P desc                   1.2.0      2018-05-01 [?]
-##  P devtools               2.3.0      2020-04-10 [?]
-##  P digest                 0.6.27     2020-10-24 [?]
-##  P doParallel             1.0.16     2020-10-16 [?]
-##  P dplyr                * 1.0.6      2021-05-05 [?]
-##  P edgeR                  3.28.1     2020-02-26 [?]
-##  P ellipsis               0.3.2      2021-04-29 [?]
-##  P evaluate               0.14       2019-05-28 [?]
-##  P fansi                  0.4.2      2021-01-15 [?]
-##  P farver                 2.1.0      2021-02-28 [?]
-##  P fastcluster            1.2.3      2021-05-24 [?]
-##  P fastmap                1.1.0      2021-01-25 [?]
-##  P fitdistrplus           1.1-3      2020-12-05 [?]
-##  P foreach                1.5.1      2020-10-15 [?]
-##  P formatR                1.9        2021-04-14 [?]
-##  P fs                     1.5.0      2020-07-31 [?]
-##  P futile.logger          1.4.3      2016-07-10 [?]
-##  P futile.options         1.0.1      2018-04-20 [?]
-##  P future                 1.21.0     2020-12-10 [?]
-##  P future.apply           1.7.0      2021-01-04 [?]
-##  P generics               0.1.0      2020-10-31 [?]
-##  P GenomeInfoDb           1.22.1     2020-03-27 [?]
-##  P GenomeInfoDbData       1.2.2      2021-12-06 [?]
-##  P GenomicRanges          1.38.0     2019-10-29 [?]
-##  P ggbeeswarm             0.6.0      2017-08-07 [?]
-##  P ggplot2              * 3.3.3      2020-12-30 [?]
-##  P ggrastr              * 0.2.3      2021-03-01 [?]
-##  P ggrepel              * 0.9.1      2021-01-15 [?]
-##  P ggridges               0.5.3      2021-01-08 [?]
-##  P git2r                  0.27.1     2020-05-03 [?]
-##  P globals                0.14.0     2020-11-22 [?]
-##  P glue                 * 1.4.2      2020-08-27 [?]
-##  P goftest                1.2-2      2019-12-02 [?]
-##  P gplots                 3.1.1      2020-11-28 [?]
-##  P gridExtra              2.3        2017-09-09 [?]
-##  P gtable                 0.3.0      2019-03-25 [?]
-##  P gtools                 3.8.2      2020-03-31 [?]
-##  P here                 * 0.1        2017-05-28 [?]
-##  P highr                  0.9        2021-04-16 [?]
-##  P hms                    1.0.0      2021-01-13 [?]
-##  P htmltools              0.5.1.1    2021-01-22 [?]
-##  P htmlwidgets            1.5.3      2020-12-10 [?]
-##  P httpuv                 1.6.1      2021-05-07 [?]
-##  P httr                   1.4.2      2020-07-20 [?]
-##  P ica                    1.0-2      2018-05-24 [?]
-##  P igraph                 1.2.6      2020-10-06 [?]
-##  P infercnv               1.2.1      2019-11-15 [?]
-##  P IRanges                2.20.2     2020-01-13 [?]
-##  P irlba                  2.3.3      2019-02-05 [?]
-##  P iterators              1.0.13     2020-10-15 [?]
-##  P jquerylib              0.1.4      2021-04-26 [?]
-##  P jsonlite               1.7.2      2020-12-09 [?]
-##  P KernSmooth             2.23-15    2015-06-29 [?]
-##  P knitr                  1.33       2021-04-24 [?]
-##  P lambda.r               1.2.4      2019-09-18 [?]
-##  P later                  1.0.0      2019-10-04 [?]
-##  P lattice                0.20-44    2021-05-02 [?]
-##  P lazyeval               0.2.2      2019-03-15 [?]
-##  P leiden                 0.3.7      2021-01-26 [?]
-##  P libcoin                1.0-8      2021-02-08 [?]
-##  P lifecycle              1.0.0      2021-02-15 [?]
-##  P limma                  3.42.2     2020-02-03 [?]
-##  P listenv                0.8.0      2019-12-05 [?]
-##  P lmtest                 0.9-38     2020-09-09 [?]
-##  P locfit                 1.5-9.4    2020-03-25 [?]
-##  P magrittr             * 2.0.1      2020-11-17 [?]
-##  P MASS                   7.3-54     2021-05-03 [?]
-##  P Matrix                 1.2-18     2019-11-27 [?]
-##  P matrixStats            0.58.0     2021-01-29 [?]
-##  P memoise                1.1.0      2017-04-21 [?]
-##  P mgcv                   1.8-35     2021-04-18 [?]
-##  P mime                   0.10       2021-02-13 [?]
-##  P miniUI                 0.1.1.1    2018-05-18 [?]
-##  P modeltools             0.2-23     2020-03-05 [?]
-##  P multcomp               1.4-17     2021-04-29 [?]
-##  P munsell                0.5.0      2018-06-12 [?]
-##  P mvtnorm                1.1-1      2020-06-09 [?]
-##  P nlme                   3.1-152    2021-02-04 [?]
-##  P openssl                1.4.4      2021-04-30 [?]
-##  P parallelly             1.25.0     2021-04-30 [?]
-##  P patchwork              1.1.1      2020-12-17 [?]
-##  P pbapply              * 1.4-3      2020-08-18 [?]
-##  P pheatmap             * 1.0.12     2019-01-04 [?]
-##  P pillar                 1.6.0      2021-04-13 [?]
-##  P pkgbuild               1.0.8      2020-05-07 [?]
-##  P pkgconfig              2.0.3      2019-09-22 [?]
-##  P pkgload                1.0.2      2018-10-29 [?]
-##  P plotly                 4.9.3      2021-01-10 [?]
-##  P plyr                   1.8.6      2020-03-03 [?]
-##  P png                    0.1-7      2013-12-03 [?]
-##  P polyclip               1.10-0     2019-03-14 [?]
-##  P prettyunits            1.1.1      2020-01-24 [?]
-##  P processx               3.5.2      2021-04-30 [?]
-##  P progress               1.2.2      2019-05-16 [?]
-##  P promises               1.1.0      2019-10-04 [?]
-##  P ps                     1.6.0      2021-02-28 [?]
-##  P purrr                * 0.3.4      2020-04-17 [?]
-##  P R6                     2.5.0      2020-10-28 [?]
-##  P RANN                   2.6.1      2019-01-08 [?]
-##  P rappdirs               0.3.3      2021-01-31 [?]
-##  P RColorBrewer         * 1.1-2      2014-12-07 [?]
-##  P Rcpp                   1.0.6      2021-01-15 [?]
-##  P RcppAnnoy              0.0.18     2020-12-15 [?]
-##  P RCurl                  1.98-1.3   2021-03-16 [?]
-##  P readr                * 1.4.0      2020-10-05 [?]
-##  P readxl               * 1.3.1      2019-03-13 [?]
-##  P remotes                2.1.1      2020-02-15 [?]
-##    renv                   0.14.0     2021-07-21 [1]
-##  P reshape                0.8.8      2018-10-23 [?]
-##  P reshape2               1.4.4      2020-04-09 [?]
-##  P reticulate             1.20       2021-05-03 [?]
-##  P rjags                  4-10       2019-11-06 [?]
-##  P rlang                  0.4.11     2021-04-30 [?]
-##  P rmarkdown              2.8        2021-05-07 [?]
-##  P ROCR                   1.0-11     2020-05-02 [?]
-##  P rpart                  4.1-15     2019-04-12 [?]
-##  P rprojroot              2.0.2      2020-11-15 [?]
-##  P RSQLite                2.2.1      2020-09-30 [?]
-##  P rsvd                   1.0.3      2020-02-17 [?]
-##  P Rtsne                  0.15       2018-11-10 [?]
-##  P S4Vectors              0.24.4     2020-04-09 [?]
-##  P sandwich               3.0-1      2021-05-18 [?]
-##  P sass                   0.4.0      2021-05-12 [?]
-##  P scales                 1.1.1      2020-05-11 [?]
-##  P sctransform            0.3.2      2020-12-16 [?]
-##  P sessioninfo            1.1.1      2018-11-05 [?]
-##  P Seurat               * 3.2.1      2020-09-07 [?]
-##  P shiny                  1.6.0      2021-01-25 [?]
-##  P SingleCellExperiment   1.8.0      2019-10-29 [?]
-##  P spatstat               1.64-1     2020-05-12 [?]
-##  P spatstat.data          2.1-0      2021-03-21 [?]
-##  P spatstat.utils         2.1-0      2021-03-15 [?]
-##  P stringi                1.6.1      2021-05-10 [?]
-##  P stringr                1.4.0      2019-02-10 [?]
-##  P SummarizedExperiment   1.16.1     2019-12-19 [?]
-##  P survival               3.2-11     2021-04-26 [?]
-##  P tensor                 1.5        2012-05-05 [?]
-##  P testrmd                0.0.1.9000 2021-12-06 [?]
-##  P testthat               2.3.2      2020-03-02 [?]
-##  P TH.data                1.0-10     2019-01-21 [?]
-##  P tibble               * 3.1.1      2021-04-18 [?]
-##  P tidyr                * 1.1.3      2021-03-03 [?]
-##  P tidyselect             1.1.1      2021-04-30 [?]
-##  P usethis                1.6.1      2020-04-29 [?]
-##  P utf8                   1.2.1      2021-03-12 [?]
-##  P uwot                   0.1.10     2020-12-15 [?]
-##  P vctrs                  0.3.8      2021-04-29 [?]
-##  P vipor                  0.4.5      2017-03-22 [?]
-##  P viridis              * 0.5.1      2018-03-29 [?]
-##  P viridisLite          * 0.4.0      2021-04-13 [?]
-##  P withr                  2.4.2      2021-04-18 [?]
-##  P xfun                   0.22       2021-03-11 [?]
-##  P XML                    3.99-0.3   2020-01-20 [?]
-##  P xtable                 1.8-4      2019-04-21 [?]
-##  P XVector                0.26.0     2019-10-29 [?]
-##  P yaml                   2.2.1      2020-02-01 [?]
-##  P zlibbioc               1.32.0     2019-10-29 [?]
-##  P zoo                    1.8-9      2021-03-09 [?]
-##  source                           
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  Bioconductor                     
-##  Bioconductor                     
-##  Bioconductor                     
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  Bioconductor                     
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Github (rmflight/testrmd@0735c20)
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
-##  Bioconductor                     
-##  CRAN (R 3.6.1)                   
+##  ! package        * version    date       lib source                           
+##  P abind            1.4-5      2016-07-21 [?] CRAN (R 3.6.1)                   
+##  P AnnotationDbi    1.48.0     2019-10-29 [?] Bioconductor                     
+##  P askpass          1.1        2019-01-13 [?] CRAN (R 3.6.1)                   
+##  P assertthat       0.2.1      2019-03-21 [?] CRAN (R 3.6.1)                   
+##  P beeswarm         0.3.1      2021-03-07 [?] CRAN (R 3.6.1)                   
+##  P Biobase          2.46.0     2019-10-29 [?] Bioconductor                     
+##  P BiocFileCache    1.10.2     2019-11-08 [?] Bioconductor                     
+##  P BiocGenerics     0.32.0     2019-10-29 [?] Bioconductor                     
+##  P biomaRt        * 2.42.1     2020-03-26 [?] Bioconductor                     
+##  P bit              4.0.4      2020-08-04 [?] CRAN (R 3.6.1)                   
+##  P bit64            4.0.5      2020-08-30 [?] CRAN (R 3.6.1)                   
+##  P blob             1.2.1      2020-01-20 [?] CRAN (R 3.6.1)                   
+##  P bslib            0.2.5      2021-05-12 [?] CRAN (R 3.6.1)                   
+##  P callr            3.7.0      2021-04-20 [?] CRAN (R 3.6.1)                   
+##  P cellranger       1.1.0      2016-07-27 [?] CRAN (R 3.6.1)                   
+##  P cli              2.5.0      2021-04-26 [?] CRAN (R 3.6.1)                   
+##  P cluster          2.1.0      2019-06-19 [?] CRAN (R 3.6.1)                   
+##  P codetools        0.2-16     2018-12-24 [?] CRAN (R 3.6.1)                   
+##  P colorspace       2.0-1      2021-05-04 [?] CRAN (R 3.6.1)                   
+##  P cowplot        * 1.1.1      2020-12-30 [?] CRAN (R 3.6.1)                   
+##  P crayon           1.4.1      2021-02-08 [?] CRAN (R 3.6.1)                   
+##  P curl             4.3.1      2021-04-30 [?] CRAN (R 3.6.1)                   
+##  P data.table       1.14.0     2021-02-21 [?] CRAN (R 3.6.1)                   
+##  P DBI              1.1.1      2021-01-15 [?] CRAN (R 3.6.1)                   
+##  P dbplyr           2.1.1      2021-04-06 [?] CRAN (R 3.6.1)                   
+##  P deldir           0.2-10     2021-02-16 [?] CRAN (R 3.6.1)                   
+##  P desc             1.2.0      2018-05-01 [?] CRAN (R 3.6.1)                   
+##  P devtools         2.3.0      2020-04-10 [?] CRAN (R 3.6.1)                   
+##  P digest           0.6.27     2020-10-24 [?] CRAN (R 3.6.1)                   
+##  P dplyr          * 1.0.6      2021-05-05 [?] CRAN (R 3.6.1)                   
+##  P ellipsis         0.3.2      2021-04-29 [?] CRAN (R 3.6.1)                   
+##  P evaluate         0.14       2019-05-28 [?] CRAN (R 3.6.1)                   
+##  P fansi            0.4.2      2021-01-15 [?] CRAN (R 3.6.1)                   
+##  P fastmap          1.1.0      2021-01-25 [?] CRAN (R 3.6.1)                   
+##  P fitdistrplus     1.1-3      2020-12-05 [?] CRAN (R 3.6.1)                   
+##  P fs               1.5.0      2020-07-31 [?] CRAN (R 3.6.1)                   
+##  P future           1.21.0     2020-12-10 [?] CRAN (R 3.6.1)                   
+##  P future.apply     1.7.0      2021-01-04 [?] CRAN (R 3.6.1)                   
+##  P generics         0.1.0      2020-10-31 [?] CRAN (R 3.6.1)                   
+##  P ggbeeswarm       0.6.0      2017-08-07 [?] CRAN (R 3.6.1)                   
+##  P ggplot2        * 3.3.3      2020-12-30 [?] CRAN (R 3.6.1)                   
+##  P ggrastr        * 0.2.3      2021-03-01 [?] CRAN (R 3.6.1)                   
+##  P ggrepel        * 0.9.1      2021-01-15 [?] CRAN (R 3.6.1)                   
+##  P ggridges         0.5.3      2021-01-08 [?] CRAN (R 3.6.1)                   
+##  P git2r            0.27.1     2020-05-03 [?] CRAN (R 3.6.1)                   
+##  P globals          0.14.0     2020-11-22 [?] CRAN (R 3.6.1)                   
+##  P glue           * 1.4.2      2020-08-27 [?] CRAN (R 3.6.1)                   
+##  P goftest          1.2-2      2019-12-02 [?] CRAN (R 3.6.1)                   
+##  P gridExtra        2.3        2017-09-09 [?] CRAN (R 3.6.1)                   
+##  P gtable           0.3.0      2019-03-25 [?] CRAN (R 3.6.1)                   
+##  P here           * 0.1        2017-05-28 [?] CRAN (R 3.6.1)                   
+##  P highr            0.9        2021-04-16 [?] CRAN (R 3.6.1)                   
+##  P hms              1.0.0      2021-01-13 [?] CRAN (R 3.6.1)                   
+##  P htmltools        0.5.1.1    2021-01-22 [?] CRAN (R 3.6.1)                   
+##  P htmlwidgets      1.5.3      2020-12-10 [?] CRAN (R 3.6.1)                   
+##  P httpuv           1.6.1      2021-05-07 [?] CRAN (R 3.6.1)                   
+##  P httr             1.4.2      2020-07-20 [?] CRAN (R 3.6.1)                   
+##  P ica              1.0-2      2018-05-24 [?] CRAN (R 3.6.1)                   
+##  P igraph           1.2.6      2020-10-06 [?] CRAN (R 3.6.1)                   
+##  P IRanges          2.20.2     2020-01-13 [?] Bioconductor                     
+##  P irlba            2.3.3      2019-02-05 [?] CRAN (R 3.6.1)                   
+##  P jquerylib        0.1.4      2021-04-26 [?] CRAN (R 3.6.1)                   
+##  P jsonlite         1.7.2      2020-12-09 [?] CRAN (R 3.6.1)                   
+##  P KernSmooth       2.23-15    2015-06-29 [?] CRAN (R 3.6.1)                   
+##  P knitr            1.33       2021-04-24 [?] CRAN (R 3.6.1)                   
+##  P later            1.0.0      2019-10-04 [?] CRAN (R 3.6.1)                   
+##  P lattice          0.20-44    2021-05-02 [?] CRAN (R 3.6.1)                   
+##  P lazyeval         0.2.2      2019-03-15 [?] CRAN (R 3.6.1)                   
+##  P leiden           0.3.7      2021-01-26 [?] CRAN (R 3.6.1)                   
+##  P lifecycle        1.0.0      2021-02-15 [?] CRAN (R 3.6.1)                   
+##  P listenv          0.8.0      2019-12-05 [?] CRAN (R 3.6.1)                   
+##  P lmtest           0.9-38     2020-09-09 [?] CRAN (R 3.6.1)                   
+##  P magrittr       * 2.0.1      2020-11-17 [?] CRAN (R 3.6.1)                   
+##  P MASS             7.3-54     2021-05-03 [?] CRAN (R 3.6.1)                   
+##  P Matrix           1.2-18     2019-11-27 [?] CRAN (R 3.6.1)                   
+##  P matrixStats      0.58.0     2021-01-29 [?] CRAN (R 3.6.1)                   
+##  P memoise          1.1.0      2017-04-21 [?] CRAN (R 3.6.1)                   
+##  P mgcv             1.8-35     2021-04-18 [?] CRAN (R 3.6.1)                   
+##  P mime             0.10       2021-02-13 [?] CRAN (R 3.6.1)                   
+##  P miniUI           0.1.1.1    2018-05-18 [?] CRAN (R 3.6.1)                   
+##  P munsell          0.5.0      2018-06-12 [?] CRAN (R 3.6.1)                   
+##  P nlme             3.1-152    2021-02-04 [?] CRAN (R 3.6.1)                   
+##  P openssl          1.4.4      2021-04-30 [?] CRAN (R 3.6.1)                   
+##  P parallelly       1.25.0     2021-04-30 [?] CRAN (R 3.6.1)                   
+##  P patchwork        1.1.1      2020-12-17 [?] CRAN (R 3.6.1)                   
+##  P pbapply        * 1.4-3      2020-08-18 [?] CRAN (R 3.6.1)                   
+##  P pheatmap       * 1.0.12     2019-01-04 [?] CRAN (R 3.6.1)                   
+##  P pillar           1.6.0      2021-04-13 [?] CRAN (R 3.6.1)                   
+##  P pkgbuild         1.0.8      2020-05-07 [?] CRAN (R 3.6.1)                   
+##  P pkgconfig        2.0.3      2019-09-22 [?] CRAN (R 3.6.1)                   
+##  P pkgload          1.0.2      2018-10-29 [?] CRAN (R 3.6.1)                   
+##  P plotly           4.9.3      2021-01-10 [?] CRAN (R 3.6.1)                   
+##  P plyr             1.8.6      2020-03-03 [?] CRAN (R 3.6.1)                   
+##  P png              0.1-7      2013-12-03 [?] CRAN (R 3.6.1)                   
+##  P polyclip         1.10-0     2019-03-14 [?] CRAN (R 3.6.1)                   
+##  P prettyunits      1.1.1      2020-01-24 [?] CRAN (R 3.6.1)                   
+##  P processx         3.5.2      2021-04-30 [?] CRAN (R 3.6.1)                   
+##  P progress         1.2.2      2019-05-16 [?] CRAN (R 3.6.1)                   
+##  P promises         1.1.0      2019-10-04 [?] CRAN (R 3.6.1)                   
+##  P ps               1.6.0      2021-02-28 [?] CRAN (R 3.6.1)                   
+##  P purrr          * 0.3.4      2020-04-17 [?] CRAN (R 3.6.1)                   
+##  P R6               2.5.0      2020-10-28 [?] CRAN (R 3.6.1)                   
+##  P RANN             2.6.1      2019-01-08 [?] CRAN (R 3.6.1)                   
+##  P rappdirs         0.3.3      2021-01-31 [?] CRAN (R 3.6.1)                   
+##  P RColorBrewer   * 1.1-2      2014-12-07 [?] CRAN (R 3.6.1)                   
+##  P Rcpp             1.0.6      2021-01-15 [?] CRAN (R 3.6.1)                   
+##  P RcppAnnoy        0.0.18     2020-12-15 [?] CRAN (R 3.6.1)                   
+##  P readr          * 1.4.0      2020-10-05 [?] CRAN (R 3.6.1)                   
+##  P readxl         * 1.3.1      2019-03-13 [?] CRAN (R 3.6.1)                   
+##  P remotes          2.1.1      2020-02-15 [?] CRAN (R 3.6.1)                   
+##    renv             0.14.0     2021-07-21 [1] CRAN (R 3.6.1)                   
+##  P reshape2         1.4.4      2020-04-09 [?] CRAN (R 3.6.1)                   
+##  P reticulate       1.20       2021-05-03 [?] CRAN (R 3.6.1)                   
+##  P rlang            0.4.11     2021-04-30 [?] CRAN (R 3.6.1)                   
+##  P rmarkdown        2.8        2021-05-07 [?] CRAN (R 3.6.1)                   
+##  P ROCR             1.0-11     2020-05-02 [?] CRAN (R 3.6.1)                   
+##  P rpart            4.1-15     2019-04-12 [?] CRAN (R 3.6.1)                   
+##  P rprojroot        2.0.2      2020-11-15 [?] CRAN (R 3.6.1)                   
+##  P RSQLite          2.2.1      2020-09-30 [?] CRAN (R 3.6.1)                   
+##  P rsvd             1.0.3      2020-02-17 [?] CRAN (R 3.6.1)                   
+##  P Rtsne            0.15       2018-11-10 [?] CRAN (R 3.6.1)                   
+##  P S4Vectors        0.24.4     2020-04-09 [?] Bioconductor                     
+##  P sass             0.4.0      2021-05-12 [?] CRAN (R 3.6.1)                   
+##  P scales           1.1.1      2020-05-11 [?] CRAN (R 3.6.1)                   
+##  P sctransform      0.3.2      2020-12-16 [?] CRAN (R 3.6.1)                   
+##  P sessioninfo      1.1.1      2018-11-05 [?] CRAN (R 3.6.1)                   
+##  P Seurat         * 3.2.1      2020-09-07 [?] CRAN (R 3.6.1)                   
+##  P shiny            1.6.0      2021-01-25 [?] CRAN (R 3.6.1)                   
+##  P spatstat         1.64-1     2020-05-12 [?] CRAN (R 3.6.1)                   
+##  P spatstat.data    2.1-0      2021-03-21 [?] CRAN (R 3.6.1)                   
+##  P spatstat.utils   2.1-0      2021-03-15 [?] CRAN (R 3.6.1)                   
+##  P stringi          1.6.1      2021-05-10 [?] CRAN (R 3.6.1)                   
+##  P stringr          1.4.0      2019-02-10 [?] CRAN (R 3.6.1)                   
+##  P survival         3.2-11     2021-04-26 [?] CRAN (R 3.6.1)                   
+##  P tensor           1.5        2012-05-05 [?] CRAN (R 3.6.1)                   
+##  P testrmd          0.0.1.9000 2021-12-06 [?] Github (rmflight/testrmd@0735c20)
+##  P testthat         2.3.2      2020-03-02 [?] CRAN (R 3.6.1)                   
+##  P tibble         * 3.1.1      2021-04-18 [?] CRAN (R 3.6.1)                   
+##  P tidyr          * 1.1.3      2021-03-03 [?] CRAN (R 3.6.1)                   
+##  P tidyselect       1.1.1      2021-04-30 [?] CRAN (R 3.6.1)                   
+##  P usethis          1.6.1      2020-04-29 [?] CRAN (R 3.6.1)                   
+##  P utf8             1.2.1      2021-03-12 [?] CRAN (R 3.6.1)                   
+##  P uwot             0.1.10     2020-12-15 [?] CRAN (R 3.6.1)                   
+##  P vctrs            0.3.8      2021-04-29 [?] CRAN (R 3.6.1)                   
+##  P vipor            0.4.5      2017-03-22 [?] CRAN (R 3.6.1)                   
+##  P viridis        * 0.5.1      2018-03-29 [?] CRAN (R 3.6.1)                   
+##  P viridisLite    * 0.4.0      2021-04-13 [?] CRAN (R 3.6.1)                   
+##  P withr            2.4.2      2021-04-18 [?] CRAN (R 3.6.1)                   
+##  P xfun             0.22       2021-03-11 [?] CRAN (R 3.6.1)                   
+##  P XML              3.99-0.3   2020-01-20 [?] CRAN (R 3.6.1)                   
+##  P xtable           1.8-4      2019-04-21 [?] CRAN (R 3.6.1)                   
+##  P yaml             2.2.1      2020-02-01 [?] CRAN (R 3.6.1)                   
+##  P zoo              1.8-9      2021-03-09 [?] CRAN (R 3.6.1)                   
 ## 
 ## [1] /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public/renv/library/R-3.6/x86_64-pc-linux-gnu
-## [2] /tmp/RtmpPkoNdk/renv-system-library
+## [2] /tmp/Rtmp361k2q/renv-system-library
 ## 
 ##  P ── Loaded and on-disk path mismatch.
 ```
@@ -1177,9 +952,9 @@ The resources requested when this document was last rendered:
 
 
 ```
-## #SBATCH --time=01:00:00
+## #SBATCH --time=02:00:00
 ## #SBATCH --cpus-per-task=1
-## #SBATCH --mem=60G
+## #SBATCH --mem=50G
 ```
 
 

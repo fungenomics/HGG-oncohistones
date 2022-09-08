@@ -1,7 +1,7 @@
 ---
 title: "03A - Epigenomic similarity between tumors & COO"
 author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
-date: "16 June, 2022"
+date: "28 July, 2022"
 params:
   resources: "NOT SPECIFIED"
 output:
@@ -848,6 +848,18 @@ all(file.exists(hg19_config$bw))
 ## [1] TRUE
 ```
 
+```r
+# show IDs
+print(hg19_config$ID_paper)
+```
+
+```
+##  [1] "DIPG14p"       "DIPG21p"       "DIPG23p"       "DIPG32p"      
+##  [5] "DIPG33p"       "DIPG36p"       "DIPG38p"       "DIPG4p"       
+##  [9] "P-1703_S-2705" "P-1741_S-2756" "SF5609t"       "P-5425_S-6886"
+## [13] "P-5426_S-6887" "P-5428_S-6889" "P-5430_S-6891" "P-2077_S-2077"
+```
+
 Construct the figure:
 
 
@@ -912,7 +924,7 @@ pageGuideHide()
 This document was last rendered on:
 
 ```
-## 2022-06-16 14:45:55
+## 2022-07-28 14:53:09
 ```
 
 The git repository and last commit:
@@ -920,7 +932,7 @@ The git repository and last commit:
 ```
 ## Local:    master /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public
 ## Remote:   master @ origin (git@github.com:fungenomics/HGG-oncohistones.git)
-## Head:     [056f679] 2022-06-14: Add R-4 renv lockfile
+## Head:     [30e21fc] 2022-07-13: Update README
 ```
 
 The random seed was set with `set.seed(100)`
@@ -992,71 +1004,72 @@ The R session info:
 ##  [11] codetools_0.2-18            ica_1.0-2                  
 ##  [13] future_1.23.0               miniUI_0.1.1.1             
 ##  [15] withr_2.4.3                 colorspace_2.0-2           
-##  [17] filelock_1.0.2              knitr_1.37                 
-##  [19] Seurat_4.0.0                ROCR_1.0-11                
-##  [21] tensor_1.5                  listenv_0.8.0              
-##  [23] MatrixGenerics_1.6.0        git2r_0.29.0               
-##  [25] GenomeInfoDbData_1.2.4      polyclip_1.10-0            
-##  [27] bit64_4.0.5                 rprojroot_2.0.2            
-##  [29] parallelly_1.30.0           vctrs_0.3.8                
-##  [31] generics_0.1.1              xfun_0.29                  
-##  [33] BiocFileCache_2.2.1         R6_2.5.1                   
-##  [35] ggbeeswarm_0.6.0            spatstat.utils_2.3-0       
-##  [37] bitops_1.0-7                cachem_1.0.6               
-##  [39] gridGraphics_0.5-1          DelayedArray_0.16.1        
-##  [41] assertthat_0.2.1            vroom_1.5.7                
-##  [43] promises_1.2.0.1            BiocIO_1.4.0               
-##  [45] scales_1.1.1                beeswarm_0.4.0             
-##  [47] gtable_0.3.0                globals_0.14.0             
-##  [49] goftest_1.2-3               rlang_0.4.12               
-##  [51] splines_4.1.2               lazyeval_0.2.2             
-##  [53] plyranges_1.14.0            abind_1.4-5                
-##  [55] BiocManager_1.30.15         yaml_2.2.1                 
-##  [57] reshape2_1.4.4              httpuv_1.6.5               
-##  [59] tools_4.1.2                 ggplotify_0.1.0            
-##  [61] ellipsis_0.3.2              jquerylib_0.1.4            
-##  [63] ggridges_0.5.3              Rcpp_1.0.8                 
-##  [65] plyr_1.8.6                  progress_1.2.2             
-##  [67] zlibbioc_1.36.0             RCurl_1.98-1.5             
-##  [69] prettyunits_1.1.1           deldir_1.0-6               
-##  [71] rpart_4.1-15                pbapply_1.5-0              
-##  [73] zoo_1.8-9                   SeuratObject_4.0.4         
-##  [75] SummarizedExperiment_1.20.0 cluster_2.1.2              
-##  [77] data.table_1.14.2           scattermore_0.7            
-##  [79] lmtest_0.9-39               RANN_2.6.1                 
-##  [81] fitdistrplus_1.1-6          matrixStats_0.61.0         
-##  [83] hms_1.1.1                   patchwork_1.1.1            
-##  [85] mime_0.12                   evaluate_0.14              
-##  [87] xtable_1.8-4                XML_3.99-0.8               
-##  [89] gridExtra_2.3               compiler_4.1.2             
-##  [91] biomaRt_2.50.2              KernSmooth_2.23-20         
-##  [93] crayon_1.4.2                htmltools_0.5.2            
-##  [95] mgcv_1.8-38                 later_1.3.0                
-##  [97] tzdb_0.2.0                  DBI_1.1.2                  
-##  [99] dbplyr_2.1.1                MASS_7.3-54                
-## [101] rappdirs_0.3.3              Matrix_1.3-4               
-## [103] cli_3.1.1                   igraph_1.2.11              
-## [105] pkgconfig_2.0.3             GenomicAlignments_1.26.0   
-## [107] plotly_4.10.0               xml2_1.3.3                 
-## [109] vipor_0.4.5                 bslib_0.3.1                
-## [111] XVector_0.30.0              yulab.utils_0.0.4          
-## [113] digest_0.6.29               sctransform_0.3.3          
-## [115] RcppAnnoy_0.0.19            spatstat.data_2.1-2        
-## [117] Biostrings_2.58.0           rmarkdown_2.11             
-## [119] leiden_0.3.9                fastmatch_1.1-3            
-## [121] uwot_0.1.11                 restfulr_0.0.13            
-## [123] curl_4.3.2                  shiny_1.7.1                
-## [125] Rsamtools_2.6.0             rjson_0.2.21               
-## [127] nlme_3.1-153                lifecycle_1.0.1            
-## [129] jsonlite_1.7.3              fansi_1.0.2                
-## [131] pillar_1.6.4                lattice_0.20-45            
-## [133] KEGGREST_1.34.0             fastmap_1.1.0              
-## [135] httr_1.4.2                  survival_3.2-13            
-## [137] spatstat_1.64-1             png_0.1-7                  
-## [139] bit_4.0.4                   stringi_1.7.6              
-## [141] sass_0.4.0                  blob_1.2.2                 
-## [143] memoise_2.0.1               renv_0.15.5                
-## [145] irlba_2.3.5                 future.apply_1.8.1
+##  [17] filelock_1.0.2              highr_0.9                  
+##  [19] knitr_1.37                  Seurat_4.0.0               
+##  [21] ROCR_1.0-11                 tensor_1.5                 
+##  [23] listenv_0.8.0               MatrixGenerics_1.6.0       
+##  [25] git2r_0.29.0                GenomeInfoDbData_1.2.4     
+##  [27] polyclip_1.10-0             bit64_4.0.5                
+##  [29] rprojroot_2.0.2             parallelly_1.30.0          
+##  [31] vctrs_0.3.8                 generics_0.1.1             
+##  [33] xfun_0.29                   BiocFileCache_2.2.1        
+##  [35] R6_2.5.1                    ggbeeswarm_0.6.0           
+##  [37] spatstat.utils_2.3-0        bitops_1.0-7               
+##  [39] cachem_1.0.6                gridGraphics_0.5-1         
+##  [41] DelayedArray_0.16.1         assertthat_0.2.1           
+##  [43] vroom_1.5.7                 promises_1.2.0.1           
+##  [45] BiocIO_1.4.0                scales_1.1.1               
+##  [47] beeswarm_0.4.0              gtable_0.3.0               
+##  [49] globals_0.14.0              goftest_1.2-3              
+##  [51] rlang_0.4.12                splines_4.1.2              
+##  [53] lazyeval_0.2.2              plyranges_1.14.0           
+##  [55] abind_1.4-5                 BiocManager_1.30.15        
+##  [57] yaml_2.2.1                  reshape2_1.4.4             
+##  [59] httpuv_1.6.5                tools_4.1.2                
+##  [61] ggplotify_0.1.0             ellipsis_0.3.2             
+##  [63] jquerylib_0.1.4             ggridges_0.5.3             
+##  [65] Rcpp_1.0.8                  plyr_1.8.6                 
+##  [67] progress_1.2.2              zlibbioc_1.36.0            
+##  [69] RCurl_1.98-1.5              prettyunits_1.1.1          
+##  [71] deldir_1.0-6                rpart_4.1-15               
+##  [73] pbapply_1.5-0               zoo_1.8-9                  
+##  [75] SeuratObject_4.0.4          SummarizedExperiment_1.20.0
+##  [77] cluster_2.1.2               data.table_1.14.2          
+##  [79] scattermore_0.7             lmtest_0.9-39              
+##  [81] RANN_2.6.1                  fitdistrplus_1.1-6         
+##  [83] matrixStats_0.61.0          hms_1.1.1                  
+##  [85] patchwork_1.1.1             mime_0.12                  
+##  [87] evaluate_0.14               xtable_1.8-4               
+##  [89] XML_3.99-0.8                gridExtra_2.3              
+##  [91] compiler_4.1.2              biomaRt_2.50.2             
+##  [93] KernSmooth_2.23-20          crayon_1.4.2               
+##  [95] htmltools_0.5.2             mgcv_1.8-38                
+##  [97] later_1.3.0                 tzdb_0.2.0                 
+##  [99] DBI_1.1.2                   dbplyr_2.1.1               
+## [101] MASS_7.3-54                 rappdirs_0.3.3             
+## [103] Matrix_1.3-4                cli_3.1.1                  
+## [105] igraph_1.2.11               pkgconfig_2.0.3            
+## [107] GenomicAlignments_1.26.0    plotly_4.10.0              
+## [109] xml2_1.3.3                  vipor_0.4.5                
+## [111] bslib_0.3.1                 XVector_0.30.0             
+## [113] yulab.utils_0.0.4           digest_0.6.29              
+## [115] sctransform_0.3.3           RcppAnnoy_0.0.19           
+## [117] spatstat.data_2.1-2         Biostrings_2.58.0          
+## [119] rmarkdown_2.11              leiden_0.3.9               
+## [121] fastmatch_1.1-3             uwot_0.1.11                
+## [123] restfulr_0.0.13             curl_4.3.2                 
+## [125] shiny_1.7.1                 Rsamtools_2.6.0            
+## [127] rjson_0.2.21                nlme_3.1-153               
+## [129] lifecycle_1.0.1             jsonlite_1.7.3             
+## [131] fansi_1.0.2                 pillar_1.6.4               
+## [133] lattice_0.20-45             KEGGREST_1.34.0            
+## [135] fastmap_1.1.0               httr_1.4.2                 
+## [137] survival_3.2-13             spatstat_1.64-1            
+## [139] png_0.1-7                   bit_4.0.4                  
+## [141] stringi_1.7.6               sass_0.4.0                 
+## [143] blob_1.2.2                  memoise_2.0.1              
+## [145] renv_0.15.5                 irlba_2.3.5                
+## [147] future.apply_1.8.1
 ```
 
 </details>
@@ -1066,7 +1079,7 @@ The resources requested when this document was last rendered:
 ```
 ## #SBATCH --time=00:20:00
 ## #SBATCH --cpus-per-task=1
-## #SBATCH --mem=60G
+## #SBATCH --mem=10G
 ```
 
 

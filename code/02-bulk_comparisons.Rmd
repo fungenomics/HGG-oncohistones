@@ -104,12 +104,16 @@ Load the differential expression analyses between H3.1 vs H3.3 and pons vs. thal
 info_h31_vs_H33 <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.1.2K27M-Pons_vs_HGG-H3.3K27M-Pons/info.samples.tsv"))
 dge_h31_vs_h33 <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.1.2K27M-Pons_vs_HGG-H3.3K27M-Pons/diff/Ensembl.ensGene.exon/HGG-H3.3K27M-PonsvsHGG-H3.1.2K27M-Pons.tsv")) %>% 
     separate(ID, into = c("ENSID", "symbol"), sep = ":")
+
+# double check no. of samples in each category
 table(info_h31_vs_H33$Group)
 
 # Thalamus has log2FoldChange > 0
 info_thalamus_vs_pons <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.3K27M-Thal._vs_HGG-H3.3K27M-Pons/info.samples.tsv"))
 dge_thalamus_vs_pons <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.3K27M-Thal._vs_HGG-H3.3K27M-Pons/diff/Ensembl.ensGene.exon/HGG-H3.3K27M-PonsvsHGG-H3.3K27M-Thal..tsv")) %>% 
     separate(ID, into = c("ENSID", "symbol"), sep = ":")
+
+# double check no. of samples in each category
 table(info_thalamus_vs_pons$Group)
 
 ```
@@ -189,7 +193,7 @@ data_chip_tidy <- data_chip %>%
     )) %>%
     mutate(Sample = gsub("_Count|_RPKM", "", dataset)) %>% 
     left_join(meta_chip %>% mutate(bw = basename(Path_bw_internal)) %>% dplyr::select(ID_paper, bw, Replicate),
-              # column name in ChIP quantification matches bw filename
+              # column name in ChIP quantification matches bigwig (bw) filename
               by = c("Sample" = "bw"))  %>% 
     filter(!grepl("NormalPons", Sample)) %>% 
     # only keep the relevant Z
@@ -205,11 +209,6 @@ data_chip_tidy <- data_chip %>%
 base::setdiff(unique(data_chip_tidy$ID_paper), unique(meta_chip$ID_paper))
 
 save(data_chip_tidy, file = glue("{out}/data_chip_tidy.Rda"))
-
-data_chip_tidy %>%
-    distinct(Mark, Sample, ID_paper) %>%
-    left_join(meta %>% select(ID_paper, Group)) %>%
-    count(Mark, Group)
 
 # make table
 data_chip_tidy %>%
@@ -301,6 +300,8 @@ dge_h31_vs_h33_and_chip %>%
 
 
 ## Scatterplot for H3.3 pons vs H3.3 thalamus
+
+This is a similar analysis to the one performed in the previous section.
 
 ```{r merge_data2, dependson = 'tidy_data_chip'}
 

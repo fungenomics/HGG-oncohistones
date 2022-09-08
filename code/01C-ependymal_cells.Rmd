@@ -42,8 +42,7 @@ cat(res, sep = '\n')
 
 In this document, we confirm the identity of the cells projected to be
 ependymal-like based on the automated cell-type projections. This is done by scoring
-cells for other features (e.g. expression of the ependymal transcription FOXJ1 and its targets,
-re-examining the cNMF programs, and re-examining the inferCNV output).
+cells for other features (e.g. expression of the ependymal transcription FOXJ1 and its targets, re-examining the cNMF programs, and re-examining the inferCNV output).
 
 # Libraries
 
@@ -77,6 +76,8 @@ ggplot2::theme_set(theme_min())
 
 # Load data
 
+In this analysis, we specifically load samples with high ependymal content:
+
 ```{r epen_samples}
 
 # select samples to interrogate further
@@ -87,7 +88,12 @@ high_epen <- c("P-6292_S-8579", # PFA
 
 ```
 
-Load data:
+Load data and add cell-level labels for visualization:
+
+* `Type_malig`: column labels cells as "Normal" if normal based on malignant/normal consensus calling, or their most similar cell type if Malignant
+* `Type_malig_inferCNV`: column labels cells as "Normal" if normal based on inferCNV calling, or their most similar cell type if Malignant
+* `Ependymal_binary` label: contains "Ependymal" or "Other" based on correlation cell type annotation
+
 
 ```{r load_epen, cache = FALSE}
 
@@ -229,7 +235,7 @@ plot_grid(plotlist = feature_plots_dnah, ncol = 4, align = "h", axis = "tb")
 
 We can also directly assess the expression/enrichment of FOXJ1 target genes in these tumors.
 
-Load a list of Foxj1 targets from [Jacquet et al, 2009](https://pubmed.ncbi.nlm.nih.gov/19906869/):
+Load a list of Foxj1 targets from [Jacquet et al, 2009](https://pubmed.ncbi.nlm.nih.gov/19906869/). We convert these to human genes using [biomaRt](https://bioconductor.org/packages/release/bioc/html/biomaRt.html).
 
 ```{r read_foxj1, eval = FALSE}
 
@@ -307,7 +313,7 @@ plot_grid(plotlist = feature_plots_foxj1_targets, ncol = 4, align = "h", axis = 
 
 In the two H3.1K27M samples with high ependymal content, cNMF independently
 identified a gene program among malignant cells which is most highly
-activate in these ependymal-like cells:
+activated in these ependymal-like cells:
 
 ```{r cnmf, fig.width = 6, fig.height = 3.5}
 
@@ -407,7 +413,7 @@ knitr::include_graphics(glue("{figout}/cNMF_P-1713_S-1713_hm.png"))
 
 # Copy-number profiles
 
-Load gene annotaton used for CNV calling:
+Load gene annotation used for CNV calling:
 
 ```{r cnv_gene_anno, message = FALSE}
 
@@ -543,7 +549,8 @@ plot_profile <- function(seurat, infercnv_out, outfile, cells, cluster_rows = TR
 
 </details>
 
-For this analysis, we'll plot separately the CNV profiles of normal cells,
+For this analysis, we focus on the two H3.1K27M samples with high proportions
+of malignant cells. We'll plot separately the CNV profiles of normal cells,
 malignant cells projected to the ependymal class, and malginant cells with
 other identities.
 

@@ -1,7 +1,7 @@
 ---
 title: "01A - Prepare human fetal thalamus data"
 author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
-date: "29 June, 2022"
+date: "08 September, 2022"
 params:
   resources: "NOT SPECIFIED"
 output:
@@ -429,7 +429,7 @@ rr_write_tsv(TABLE_thalamus_qc,
 
 # Gather gene signatures
 
-First, load all cluster markers and filter out markers for samples/cluters that we'll exclude:
+First, load all cluster markers and filter out markers for samples/clusters that we'll exclude:
 
 
 
@@ -551,7 +551,7 @@ melano_clusters <- names(melano_count)[melano_count == 3]
 
 # Complete and refine cluster labels
 
-We will manually udpate the provided cluster labels in order to ensure all populations 
+We will manually update the cluster labels (provided by the author) in order to ensure all populations 
 of interest are labelled. We will use the following markers:
 
 * Astrocytes: FABP7, S100B, CLU, AQP4
@@ -560,6 +560,8 @@ of interest are labelled. We will use the following markers:
 * Ependymal: FOXJ1,  DNAH10, KIF19, DNAH12, TEK1
 * OPC: PDGFRA, OLIG1, OLIG2
 * Glial progenitors: SOX2, OLIG1/2
+
+After using these markers to update the labels outside of R, we load in the updated labels:
 
 
 
@@ -730,7 +732,7 @@ This document was last rendered on:
 
 
 ```
-## 2022-06-29 10:01:08
+## 2022-09-08 14:54:28
 ```
 
 
@@ -742,7 +744,7 @@ The git repository and last commit:
 ```
 ## Local:    master /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public
 ## Remote:   master @ origin (git@github.com:fungenomics/HGG-oncohistones.git)
-## Head:     [009cdf0] 2022-06-29: Add README and update infrastructure
+## Head:     [4101e76] 2022-09-08: Update README.md
 ```
 
 
@@ -751,6 +753,14 @@ The random seed was set with `set.seed(100)`
 
 The R session info:
 <details>
+
+
+
+```
+## Registered S3 method overwritten by 'cli':
+##   method     from    
+##   print.boxx spatstat
+```
 
 
 
@@ -764,14 +774,14 @@ The R session info:
 ## ─ Session info ───────────────────────────────────────────────────────────────
 ##  setting  value                           
 ##  version  R version 3.6.1 (2019-07-05)    
-##  os       Rocky Linux 8.5 (Green Obsidian)
+##  os       Rocky Linux 8.6 (Green Obsidian)
 ##  system   x86_64, linux-gnu               
 ##  ui       X11                             
 ##  language (EN)                            
 ##  collate  en_CA.UTF-8                     
 ##  ctype    en_CA.UTF-8                     
 ##  tz       EST5EDT                         
-##  date     2022-06-29                      
+##  date     2022-09-08                      
 ## 
 ## ─ Packages ───────────────────────────────────────────────────────────────────
 ##  ! package        * version    date       lib
@@ -877,7 +887,6 @@ The R session info:
 ##  P ROCR             1.0-11     2020-05-02 [?]
 ##  P rpart            4.1-15     2019-04-12 [?]
 ##  P rprojroot        2.0.2      2020-11-15 [?]
-##  P rstudioapi       0.13       2020-11-12 [?]
 ##  P rsvd             1.0.3      2020-02-17 [?]
 ##  P Rtsne            0.15       2018-11-10 [?]
 ##  P sass             0.4.0      2021-05-12 [?]
@@ -1027,7 +1036,6 @@ The R session info:
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
-##  CRAN (R 3.6.1)                       
 ##  Github (rmflight/testrmd@0735c20)    
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
@@ -1046,7 +1054,7 @@ The R session info:
 ##  CRAN (R 3.6.1)                       
 ## 
 ## [1] /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public/renv/library/R-3.6/x86_64-pc-linux-gnu
-## [2] /tmp/RtmpMEdStn/renv-system-library
+## [2] /tmp/RtmpRjPYXN/renv-system-library
 ## 
 ##  P ── Loaded and on-disk path mismatch.
 ```
@@ -1060,7 +1068,7 @@ The resources requested when this document was last rendered:
 
 
 ```
-## #SBATCH --time=00:20:00
+## #SBATCH --time=01:00:00
 ## #SBATCH --cpus-per-task=1
 ## #SBATCH --mem=50G
 ```

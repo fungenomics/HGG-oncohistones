@@ -1,7 +1,7 @@
 ---
 title: "02 - Bulk RNAseq/ChIPseq comparisons"
 author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
-date: "29 June, 2022"
+date: "08 September, 2022"
 params:
   resources: "NOT SPECIFIED"
 output:
@@ -160,6 +160,8 @@ Load the differential expression analyses between H3.1 vs H3.3 and pons vs. thal
 info_h31_vs_H33 <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.1.2K27M-Pons_vs_HGG-H3.3K27M-Pons/info.samples.tsv"))
 dge_h31_vs_h33 <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.1.2K27M-Pons_vs_HGG-H3.3K27M-Pons/diff/Ensembl.ensGene.exon/HGG-H3.3K27M-PonsvsHGG-H3.1.2K27M-Pons.tsv")) %>% 
     separate(ID, into = c("ENSID", "symbol"), sep = ":")
+
+# double check no. of samples in each category
 table(info_h31_vs_H33$Group)
 ```
 
@@ -178,6 +180,8 @@ table(info_h31_vs_H33$Group)
 info_thalamus_vs_pons <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.3K27M-Thal._vs_HGG-H3.3K27M-Pons/info.samples.tsv"))
 dge_thalamus_vs_pons <- read_tsv(here("data/RNAseq/pipeline_l3/DGE/HGG-H3.3K27M-Thal._vs_HGG-H3.3K27M-Pons/diff/Ensembl.ensGene.exon/HGG-H3.3K27M-PonsvsHGG-H3.3K27M-Thal..tsv")) %>% 
     separate(ID, into = c("ENSID", "symbol"), sep = ":")
+
+# double check no. of samples in each category
 table(info_thalamus_vs_pons$Group)
 ```
 
@@ -338,7 +342,7 @@ data_chip_tidy <- data_chip %>%
     )) %>%
     mutate(Sample = gsub("_Count|_RPKM", "", dataset)) %>% 
     left_join(meta_chip %>% mutate(bw = basename(Path_bw_internal)) %>% dplyr::select(ID_paper, bw, Replicate),
-              # column name in ChIP quantification matches bw filename
+              # column name in ChIP quantification matches bigwig (bw) filename
               by = c("Sample" = "bw"))  %>% 
     filter(!grepl("NormalPons", Sample)) %>% 
     # only keep the relevant Z
@@ -365,25 +369,6 @@ base::setdiff(unique(data_chip_tidy$ID_paper), unique(meta_chip$ID_paper))
 ```r
 save(data_chip_tidy, file = glue("{out}/data_chip_tidy.Rda"))
 
-data_chip_tidy %>%
-    distinct(Mark, Sample, ID_paper) %>%
-    left_join(meta %>% select(ID_paper, Group)) %>%
-    count(Mark, Group)
-```
-
-
-
-```
-## Joining, by = "ID_paper"
-```
-
-<div data-pagedtable="false">
-  <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["Mark"],"name":[1],"type":["chr"],"align":["left"]},{"label":["Group"],"name":[2],"type":["chr"],"align":["left"]},{"label":["n"],"name":[3],"type":["int"],"align":["right"]}],"data":[{"1":"H3K27ac","2":"HGG-H3.1/2K27M-Pons","3":"16"},{"1":"H3K27ac","2":"HGG-H3.3K27M-Pons","3":"16"},{"1":"H3K27ac","2":"HGG-H3.3K27M-Thal.","3":"5"},{"1":"H3K27ac","2":"HGG-H3WT-Cortex","3":"3"},{"1":"H3K27ac","2":"HGG-H3WT-NA","3":"2"},{"1":"H3K27ac","2":"PFA-EZHIP-PF","3":"4"},{"1":"H3K27ac","2":"PFA-H3.1K27M-PF","3":"1"},{"1":"H3K27ac","2":"NA","3":"9"},{"1":"H3K27me3","2":"HGG-H3.1/2K27M-Pons","3":"3"},{"1":"H3K27me3","2":"HGG-H3.3K27M-Pons","3":"6"},{"1":"H3K27me3","2":"HGG-H3.3K27M-Thal.","3":"4"},{"1":"H3K27me3","2":"HGG-H3WT-Cortex","3":"4"},{"1":"H3K27me3","2":"PFA-EZHIP-PF","3":"4"},{"1":"H3K27me3","2":"PFA-H3.1K27M-PF","3":"1"},{"1":"H3K27me3","2":"NA","3":"9"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
-  </script>
-</div>
-
-```r
 # make table
 data_chip_tidy %>%
     mutate(ID_paper = case_when(
@@ -510,6 +495,8 @@ dge_h31_vs_h33_and_chip %>%
 
 ## Scatterplot for H3.3 pons vs H3.3 thalamus
 
+This is a similar analysis to the one performed in the previous section.
+
 
 
 ```r
@@ -599,7 +586,7 @@ This document was last rendered on:
 
 
 ```
-## 2022-06-29 10:10:41
+## 2022-09-08 15:08:33
 ```
 
 
@@ -611,7 +598,7 @@ The git repository and last commit:
 ```
 ## Local:    master /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public
 ## Remote:   master @ origin (git@github.com:fungenomics/HGG-oncohistones.git)
-## Head:     [009cdf0] 2022-06-29: Add README and update infrastructure
+## Head:     [4101e76] 2022-09-08: Update README.md
 ```
 
 
@@ -633,14 +620,14 @@ The R session info:
 ## ─ Session info ───────────────────────────────────────────────────────────────
 ##  setting  value                           
 ##  version  R version 3.6.1 (2019-07-05)    
-##  os       Rocky Linux 8.5 (Green Obsidian)
+##  os       Rocky Linux 8.6 (Green Obsidian)
 ##  system   x86_64, linux-gnu               
 ##  ui       X11                             
 ##  language (EN)                            
 ##  collate  en_CA.UTF-8                     
 ##  ctype    en_CA.UTF-8                     
 ##  tz       EST5EDT                         
-##  date     2022-06-29                      
+##  date     2022-09-08                      
 ## 
 ## ─ Packages ───────────────────────────────────────────────────────────────────
 ##  ! package        * version    date       lib
@@ -665,6 +652,7 @@ The R session info:
 ##  P ellipsis         0.3.2      2021-04-29 [?]
 ##  P evaluate         0.14       2019-05-28 [?]
 ##  P fansi            0.4.2      2021-01-15 [?]
+##  P farver           2.1.0      2021-02-28 [?]
 ##  P fastmap          1.1.0      2021-01-25 [?]
 ##  P feather        * 0.3.5      2019-09-15 [?]
 ##  P fitdistrplus     1.1-3      2020-12-05 [?]
@@ -682,6 +670,7 @@ The R session info:
 ##  P gridExtra        2.3        2017-09-09 [?]
 ##  P gtable           0.3.0      2019-03-25 [?]
 ##  P here           * 0.1        2017-05-28 [?]
+##  P highr            0.9        2021-04-16 [?]
 ##  P hms              1.0.0      2021-01-13 [?]
 ##  P htmltools        0.5.1.1    2021-01-22 [?]
 ##  P htmlwidgets      1.5.3      2020-12-10 [?]
@@ -695,6 +684,7 @@ The R session info:
 ##  P jsonlite         1.7.2      2020-12-09 [?]
 ##  P KernSmooth       2.23-15    2015-06-29 [?]
 ##  P knitr            1.33       2021-04-24 [?]
+##  P labeling         0.4.2      2020-10-20 [?]
 ##  P later            1.0.0      2019-10-04 [?]
 ##  P lattice          0.20-44    2021-05-02 [?]
 ##  P lazyeval         0.2.2      2019-03-15 [?]
@@ -821,7 +811,10 @@ The R session info:
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
+##  CRAN (R 3.6.1)                       
+##  CRAN (R 3.6.1)                       
 ##  Github (fungenomics/icytobox@730e8b8)
+##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
@@ -911,7 +904,7 @@ The R session info:
 ##  CRAN (R 3.6.1)                       
 ## 
 ## [1] /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public/renv/library/R-3.6/x86_64-pc-linux-gnu
-## [2] /tmp/Rtmp21MFFn/renv-system-library
+## [2] /tmp/RtmpPXZ49F/renv-system-library
 ## 
 ##  P ── Loaded and on-disk path mismatch.
 ```
@@ -925,7 +918,7 @@ The resources requested when this document was last rendered:
 
 
 ```
-## #SBATCH --time=00:20:00
+## #SBATCH --time=01:00:00
 ## #SBATCH --cpus-per-task=1
 ## #SBATCH --mem=10G
 ```

@@ -325,7 +325,7 @@ rr_write_tsv(TABLE_thalamus_qc,
 
 # Gather gene signatures
 
-First, load all cluster markers and filter out markers for samples/cluters that we'll exclude:
+First, load all cluster markers and filter out markers for samples/clusters that we'll exclude:
 
 ```{r generate_signatures, message = FALSE}
 
@@ -379,7 +379,7 @@ melano_clusters <- names(melano_count)[melano_count == 3]
 
 # Complete and refine cluster labels
 
-We will manually udpate the provided cluster labels in order to ensure all populations 
+We will manually update the cluster labels (provided by the author) in order to ensure all populations 
 of interest are labelled. We will use the following markers:
 
 * Astrocytes: FABP7, S100B, CLU, AQP4
@@ -388,6 +388,8 @@ of interest are labelled. We will use the following markers:
 * Ependymal: FOXJ1,  DNAH10, KIF19, DNAH12, TEK1
 * OPC: PDGFRA, OLIG1, OLIG2
 * Glial progenitors: SOX2, OLIG1/2
+
+After using these markers to update the labels outside of R, we load in the updated labels:
 
 ```{r manual_labels, message = FALSE}
 

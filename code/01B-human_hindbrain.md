@@ -1,7 +1,7 @@
 ---
 title: "01B - Prepare human fetal hindbrain data"
 author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
-date: "29 June, 2022"
+date: "08 September, 2022"
 params:
   resources: "NOT SPECIFIED"
 output:
@@ -378,7 +378,7 @@ rr_write_tsv(TABLE_hindbrain_qc,
 
 # Gather gene signatures
 
-First, load all cluster markers and filter out markers for samples/cluters that we'll exclude:
+First, load all cluster markers and filter out markers for samples/clusters that we'll exclude:
 
 
 
@@ -755,7 +755,7 @@ This document was last rendered on:
 
 
 ```
-## 2022-06-29 10:03:17
+## 2022-09-08 14:54:02
 ```
 
 
@@ -767,7 +767,7 @@ The git repository and last commit:
 ```
 ## Local:    master /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public
 ## Remote:   master @ origin (git@github.com:fungenomics/HGG-oncohistones.git)
-## Head:     [009cdf0] 2022-06-29: Add README and update infrastructure
+## Head:     [4101e76] 2022-09-08: Update README.md
 ```
 
 
@@ -789,14 +789,14 @@ The R session info:
 ## ─ Session info ───────────────────────────────────────────────────────────────
 ##  setting  value                           
 ##  version  R version 3.6.1 (2019-07-05)    
-##  os       Rocky Linux 8.5 (Green Obsidian)
+##  os       Rocky Linux 8.6 (Green Obsidian)
 ##  system   x86_64, linux-gnu               
 ##  ui       X11                             
 ##  language (EN)                            
 ##  collate  en_CA.UTF-8                     
 ##  ctype    en_CA.UTF-8                     
 ##  tz       EST5EDT                         
-##  date     2022-06-29                      
+##  date     2022-09-08                      
 ## 
 ## ─ Packages ───────────────────────────────────────────────────────────────────
 ##  ! package        * version    date       lib
@@ -1067,7 +1067,7 @@ The R session info:
 ##  CRAN (R 3.6.1)                       
 ## 
 ## [1] /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public/renv/library/R-3.6/x86_64-pc-linux-gnu
-## [2] /tmp/Rtmpt7dKUV/renv-system-library
+## [2] /tmp/RtmpjmcRci/renv-system-library
 ## 
 ##  P ── Loaded and on-disk path mismatch.
 ```
@@ -1083,7 +1083,7 @@ The resources requested when this document was last rendered:
 ```
 ## #SBATCH --time=01:00:00
 ## #SBATCH --cpus-per-task=1
-## #SBATCH --mem=60G
+## #SBATCH --mem=50G
 ```
 
 

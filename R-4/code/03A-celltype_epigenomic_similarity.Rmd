@@ -613,6 +613,9 @@ hg19_config <- meta_chip %>%
 # sanity check
 all(file.exists(hg19_config$bw))
 
+# show IDs
+print(hg19_config$ID_paper)
+
 ```
 
 Construct the figure:
