@@ -9,18 +9,18 @@ Link to repository: https://github.com/fungenomics/HGG-oncohistones
 This repository is archived on [Zenodo](https://doi.org/10.5281/zenodo.6647837).
 
 Contents:
-* [Contents of the repository](https://github.com/fungenomics/HGG-oncohistones-stable#contents-of-this-repository)
-* [Notes for reproducibility](https://github.com/fungenomics/HGG-oncohistones-stable#notes-for-reproducibility)
-* [Materials for the manuscript](https://github.com/fungenomics/HGG-oncohistones-stable#materials-for-the-manuscript)
-     * [Code to reproduce key analysies](https://github.com/fungenomics/HGG-oncohistones-stable#code-to-reproduce-key-analyses)
-     * [Palettes & custom plotting utilities](https://github.com/fungenomics/HGG-oncohistones-stable#palettes--custom-plotting-utilities)
-     * [Tables](https://github.com/fungenomics/HGG-oncohistones-stable#tables)
-* [Processed single-cell data](https://github.com/fungenomics/HGG-oncohistones-stable#processed-single-cell-data)
-     * [scRNAseq](https://github.com/fungenomics/HGG-oncohistones-stable#single-cell-rnaseq-data)
-     * [scATAC](https://github.com/fungenomics/HGG-oncohistones-stable#single-cell-atacseq-data)
-     * [scMultiome](https://github.com/fungenomics/HGG-oncohistones-stable#single-cell-multiome-data)
-     * [Cell annotations matching the paper](https://github.com/fungenomics/HGG-oncohistones-stable#cell-annotations-matching-the-paper)
-* [Re-analysis of human fetal brain scRNAseq data](https://github.com/fungenomics/HGG-oncohistones-stable#human-fetal-brain-scrnaseq-data)
+* [Contents of the repository](https://github.com/fungenomics/HGG-oncohistones#contents-of-this-repository)
+* [Notes for reproducibility](https://github.com/fungenomics/HGG-oncohistones#notes-for-reproducibility)
+* [Materials for the manuscript](https://github.com/fungenomics/HGG-oncohistones#materials-for-the-manuscript)
+     * [Code to reproduce key analysies](https://github.com/fungenomics/HGG-oncohistones#code-to-reproduce-key-analyses)
+     * [Palettes & custom plotting utilities](https://github.com/fungenomics/HGG-oncohistones#palettes--custom-plotting-utilities)
+     * [Tables](https://github.com/fungenomics/HGG-oncohistones#tables)
+* [Processed single-cell data](https://github.com/fungenomics/HGG-oncohistones#processed-single-cell-data)
+     * [scRNAseq](https://github.com/fungenomics/HGG-oncohistones#single-cell-rnaseq-data)
+     * [scATAC](https://github.com/fungenomics/HGG-oncohistones#single-cell-atacseq-data)
+     * [scMultiome](https://github.com/fungenomics/HGG-oncohistones#single-cell-multiome-data)
+     * [Cell annotations matching the paper](https://github.com/fungenomics/HGG-oncohistones#cell-annotations-matching-the-paper)
+* [Re-analysis of human fetal brain scRNAseq data](https://github.com/fungenomics/HGG-oncohistones#human-fetal-brain-scrnaseq-data)
 * [Citation](https://github.com/fungenomics/HGG-oncohistones#citation)
 
 
@@ -33,14 +33,14 @@ analyses in the manuscript and the exact R dependencies, in order to improve rep
 * `renv.lock` --> lockfile containing all package versions for R 3.6 analysis
 * `code` --> code for R 3.6 analysis, contains the .Rmd files that run the high-level analyses and produce figures included in the paper
    * `functions` --> contains .R files with custom functions used throughout the analysis
-   * `infos_templates` --> contains example config files for analyses that are repeated on individual samples
    * `scripts` --> contains .R and bash scripts for analyses that are repeated on individual samples, as well as helper scripts e.g. for creating references
-* `R-4` --> code for R 4.1 analysis
-   * `code` --> contains .Rmd fies, functions, and scripts for R 4.1 analysis
+   * `infos_templates` --> contains example config files for scripts in the `scripts` folder
+* `R-4` --> code for R 4.1 analysis (has a similar directory structure as the above main directory)
+   * `code` --> contains .Rmd files, functions, and scripts for R 4.1 analysis
    * `renv` --> renv-managed folder for R 4.1
    * `renv.lock` --> lockfile containing all package version for R 4.1 analysis
 * `include` --> contains templates, palettes, etc, for this repository
-* `rr_helpers.R` --> contains helper functions for working with this GitHub repository tempalte
+* `rr_helpers.R` --> contains helper functions for working with this GitHub repository template ([`rr`](https://github.com/sjessa/rr))
 
 
 
@@ -55,7 +55,7 @@ function name) to help encourage documentation.
 
 ### R and R package versions
 
-The R libraries for this project are managed with the package `renv`. 
+The R libraries for this project are managed with the package [`renv`](https://rstudio.github.io/renv/index.html). 
 The R versions used are 3.6.1 and 4.1.2, and `renv` manages one library
 for each R version.
 
@@ -137,24 +137,23 @@ theme elements (`theme_min()`, `no_legend()`, `rotate_x()`, etc) are defined in 
 
 ###  Tables
 
-Supplementary tables (included with the manuscript) and processed data tables were assembled from the following input/output/figure source data files:
+Supplementary tables (included with the manuscript) and processed data tables were assembled from the following input/output/figure source data files. (Only tables produced with the code included here are listed below.)
 
 | Supplementary table | Path |
 | ----- | ---- |
-| 2a | `./output/00/TABLE_scRNAseq_QC.tsv` |
-| 2b | `./output/00/TABLE_scATACseq_QC.tsv` |
-| 2c | `./output/00/TABLE_scMultiome_QC.tsv` |
-| 3a | `./output/05/TABLE_mouse_sample_info.tsv` |
-| 3b | `./output/05/TABLE_mouse_cluster_info.tsv` |
-| 3c |  `./output/01A/TABLE_thalamus_QC.tsv` and `./output/01B/TABLE_hindbrain_QC.tsv` |
-| 3d | `./output/01A/info_clusters3.tsv` and `./output/01B/info_clusters3.tsv` |
-| 4a | `./R-4/output/02/TABLE_cNMF_programs_per_sample.tsv` |
-| 4b | `./R-4/output/02/cNMF_metaprogram_signatures.malignant_filt.tsv` |
-| 4c | `./R-4/output/02/TABLE_reference_cnmf_program_overlaps.tsv` |
-| 5a | `./figures/03B/enhancer_diff-1.source_data.tsv` |
-| 6a | `./output/03A/TABLE_HOX_expression_per_transcript.tsv` |
-| 6b | `./output/03A/TABLE_HOX_H3K27ac_H3K27me3_per_transcript.tsv` |
-
+| 3 | `./output/00/TABLE_scRNAseq_QC.tsv` |
+| 4 | `./output/00/TABLE_scATACseq_QC.tsv` |
+| 5 | `./output/00/TABLE_scMultiome_QC.tsv` |
+| 6 | `./output/05/TABLE_mouse_sample_info.tsv` |
+| 7 | `./output/05/TABLE_mouse_cluster_info.tsv` |
+| 8 | `./R-4/output/02/TABLE_cNMF_programs_per_sample.tsv` |
+| 9 | `./R-4/output/02/cNMF_metaprogram_signatures.malignant_filt.tsv` |
+| 10 | `./R-4/output/02/TABLE_reference_cnmf_program_overlaps.tsv` |
+| 11 |  `./output/01A/TABLE_thalamus_QC.tsv` and `./output/01B/TABLE_hindbrain_QC.tsv` |
+| 12 | `./output/01A/info_clusters3.tsv` and `./output/01B/info_clusters3.tsv` |
+| 13 | `./output/03A/TABLE_HOX_expression_per_transcript.tsv` |
+| 14 | `./output/03A/TABLE_HOX_H3K27ac_H3K27me3_per_transcript.tsv` |
+| 16 | `./figures/03B/enhancer_diff-1.source_data.tsv` |
 
 | Processed data table | Path | 
 | ----- | ---- |
@@ -170,12 +169,12 @@ Supplementary tables (included with the manuscript) and processed data tables we
 
 This section describes the scripts used for preprocessing of single-cell
 data from this project. That includes: sn/scRNAseq, scATACseq, and scMultiome
-(joint RNA & ATAC in the same cells). Please see the Methods section of the manuscript for more details.
+(joint RNA & ATAC in the same cells). This document refers to sn and scRNAseq generally as 'scRNAseq'. Please see the sample metadata for the technology used to profile each sample. Please see the Methods section of the manuscript for more details on the single-cell profiling.
 
 
 ### Single-cell RNAseq data
 
-The pipeline for scRNAseq processing applied per-sample is summarized in this schematic:
+The pipeline for scRNAseq processing applied per-sample is summarized in this schematic. In general, `scripts` contain the code to run the analysis and `config` files contain the parameters or setting specific to a certain iteration of the analysis.
 
 ![](include/img/scRNAseq_pipeline.png)
 
@@ -209,7 +208,7 @@ as described in the schematic above, run in that sample's folder, with the assoc
 
 ### Cell annotations matching the paper
 
-For scRNAseq, scATACseq and scMultiome samples, the cell metadata contains several
+For scRNAseq, scATACseq and scMultiome samples, the cell metadata provided with the paper contains several
 columns matching the analyses used in the paper:
 
 * `Cell_type_granular_mouse_correlations` --> cell-type projection to the extended mouse atlas, based on the Spearman correlation, using the cluster label (REGION-TIMEPOINT_CLUSTER)
