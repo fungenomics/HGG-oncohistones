@@ -1,7 +1,7 @@
 ---
 title: "07 - Analysis in K27M and K27M-KO cell lines"
 author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
-date: "29 June, 2022"
+date: "12 September, 2022"
 params:
   resources: "NOT SPECIFIED"
 output:
@@ -156,7 +156,7 @@ meta_chip <- read_tsv(here("data/metadata/metadata_chip_all.tsv"))
 
 ## Heatmaps
 
-Prepare data for heatmaps:
+Prepare data for heatmaps, which are then generated int he scripts `07D` and `07E` using [deeptools](https://deeptools.readthedocs.io/en/develop/).
 
 
 
@@ -183,7 +183,7 @@ meta_chip_parental_hm_input <- meta_chip %>%
 
 
 
-preserve52a23d7a7a4de5aa
+preserve5be4c4dad4d3481a
 
 
 ```r
@@ -293,6 +293,8 @@ stats_ms
 {"columns":[{"label":["Peptide"],"name":[1],"type":["chr"],"align":["left"]},{"label":["Comp"],"name":[2],"type":["chr"],"align":["left"]},{"label":["Test"],"name":[3],"type":["chr"],"align":["left"]},{"label":["pvalue"],"name":[4],"type":["chr"],"align":["left"]},{"label":["Signif"],"name":[5],"type":["chr"],"align":["left"]}],"data":[{"1":"H3K27me3","2":"H3.1 vs H3.3","3":"Welch Two Sample t-test","4":"5.28e-08","5":"*"},{"1":"H3K27me3","2":"H3.1 vs PFA","3":"Welch Two Sample t-test","4":"1.56e-05","5":"*"},{"1":"H3K27me3","2":"H3.3 vs PFA","3":"Welch Two Sample t-test","4":"2.62e-05","5":"*"},{"1":"H3K27me3","2":"H3.1 vs H3WT","3":"Welch Two Sample t-test","4":"2.14e-07","5":"*"},{"1":"H3K27me3","2":"H3.3 vs H3WT","3":"Welch Two Sample t-test","4":"3.27e-07","5":"*"},{"1":"H3K27me3","2":"PFA vs ST","3":"Welch Two Sample t-test","4":"1.07e-06","5":"*"},{"1":"H3K27me2","2":"H3.1 vs H3.3","3":"Welch Two Sample t-test","4":"8.44e-12","5":"*"},{"1":"H3K27me2","2":"H3.1 vs PFA","3":"Welch Two Sample t-test","4":"1.04e-07","5":"*"},{"1":"H3K27me2","2":"H3.3 vs PFA","3":"Welch Two Sample t-test","4":"1.81e-08","5":"*"},{"1":"H3K27me2","2":"H3.1 vs H3WT","3":"Welch Two Sample t-test","4":"4.07e-11","5":"*"},{"1":"H3K27me2","2":"H3.3 vs H3WT","3":"Welch Two Sample t-test","4":"7.97e-12","5":"*"},{"1":"H3K27me2","2":"PFA vs ST","3":"Welch Two Sample t-test","4":"1.57e-06","5":"*"},{"1":"H3K27ac","2":"H3.1 vs H3.3","3":"Welch Two Sample t-test","4":"9.82e-01","5":"NA"},{"1":"H3K27ac","2":"H3.1 vs PFA","3":"Welch Two Sample t-test","4":"4.40e-03","5":"*"},{"1":"H3K27ac","2":"H3.3 vs PFA","3":"Welch Two Sample t-test","4":"1.75e-05","5":"*"},{"1":"H3K27ac","2":"H3.1 vs H3WT","3":"Welch Two Sample t-test","4":"7.42e-03","5":"*"},{"1":"H3K27ac","2":"H3.3 vs H3WT","3":"Welch Two Sample t-test","4":"5.32e-05","5":"*"},{"1":"H3K27ac","2":"PFA vs ST","3":"Welch Two Sample t-test","4":"2.59e-01","5":"NA"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
+
+
 
 
 # Pervasive H3K27ac
@@ -434,7 +436,7 @@ ldc <- list(location = df.loc,    # genomic locations
 
 
 
-preserve98ef54ee53607c17
+preservec9192003cb3371c5
 
 
 ```r
@@ -513,12 +515,12 @@ suz12 <- list(here("data/ChIPseq/peaks/cell_parental/SUZ12/BT245_SUZ12.narrowPea
 extra.cols <- c(signalValue = "numeric", pValue = "numeric", qValue = "numeric", peak = "integer")
 
 bed.suz12.K27M.gr <- map(suz12[1:2], ~ rtracklayer::import(.x, extraCols = extra.cols)) %>% 
-    GRangesList() %>% # make into the right data structure
-    unlist()          # collapse into one list
+    GRangesList() %>% # covert to GenomicRangesList
+    unlist()          # collapse into one set of granges
 
 bed.suz12.WT.gr   <- map(suz12[3:4], ~ rtracklayer::import(.x, extraCols = extra.cols)) %>% 
-    GRangesList() %>% # make into the right data structure
-    unlist()          # collapse into one list
+    GRangesList() %>% # covert to GenomicRangesList
+    unlist()          # collapse into one set of granges
 
 # collate
 annot.gr <- list(
@@ -691,7 +693,7 @@ df.top.bins.k27me3_long <- df.top.bins.k27me3 %>%
 axis_colours <- map_chr(df.meta %>% filter(Factor == "H3K27me3") %>% pull(Group), ~ palette_groups[.x])
 ```
 
-<br><span style="color:#0d00ff">~[figure @ *public/figures/07A/barplot_genomic_regions...*]~</span>
+
 
 
 Plot by group:
@@ -722,46 +724,6 @@ df.top.bins.k27me3_long_prop <- df.top.bins.k27me3_long %>%
             Group == "HGG-H3WT-Cortex" ~ "H3WT"
         ))
 
-h3.1 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.1K27M"  & annotation == "CGI") %>% pull(n)
-h3.3 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.3K27M"  & annotation == "CGI") %>% pull(n)
-pfa  <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "EZHIP-PFA" & annotation == "CGI") %>% pull(n)
-wt   <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3WT"      & annotation == "CGI") %>% pull(n)
-
-tribble(
-    ~ "Comp", ~ "pvalue",
-    "H3.1 vs H3WT", t.test(h3.1, wt)$p.value,
-    "H3.3 vs H3WT", t.test(h3.3, wt)$p.value,
-    "PFA  vs H3WT", t.test(pfa,  wt)$p.value
-)
-```
-
-<div data-pagedtable="false">
-  <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["Comp"],"name":[1],"type":["chr"],"align":["left"]},{"label":["pvalue"],"name":[2],"type":["dbl"],"align":["right"]}],"data":[{"1":"H3.1 vs H3WT","2":"0.0241672794"},{"1":"H3.3 vs H3WT","2":"0.0257190223"},{"1":"PFA  vs H3WT","2":"0.0009043772"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
-  </script>
-</div>
-
-```r
-h3.1 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.1K27M"  & annotation == "SUZ12_K27M") %>% pull(n)
-h3.3 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.3K27M"  & annotation == "SUZ12_K27M") %>% pull(n)
-pfa  <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "EZHIP-PFA" & annotation == "SUZ12_K27M") %>% pull(n)
-wt   <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3WT"      & annotation == "SUZ12_K27M") %>% pull(n)
-
-tribble(
-    ~ "Comp", ~ "pvalue",
-    "H3.1 vs H3WT", t.test(h3.1, wt)$p.value,
-    "H3.3 vs H3WT", t.test(h3.3, wt)$p.value,
-    "PFA  vs H3WT", t.test(pfa,  wt)$p.value
-)
-```
-
-<div data-pagedtable="false">
-  <script data-pagedtable-source type="application/json">
-{"columns":[{"label":["Comp"],"name":[1],"type":["chr"],"align":["left"]},{"label":["pvalue"],"name":[2],"type":["dbl"],"align":["right"]}],"data":[{"1":"H3.1 vs H3WT","2":"0.062988723"},{"1":"H3.3 vs H3WT","2":"0.022642899"},{"1":"PFA  vs H3WT","2":"0.001617436"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
-  </script>
-</div>
-
-```r
 df.top.bins.k27me3_long_prop %>% 
     rr_ggplot(aes(x = Group2, y = Prop), plot_num = 1) +
     geom_jitter(aes(fill = Genotype, shape = Genotype), size = 4, alpha = 0.8, width = 0.1) +
@@ -785,6 +747,51 @@ df.top.bins.k27me3_long_prop %>%
 
 ![](/lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public/figures/07A/dotplot_genomic_regions-1.png)<!-- --><br><span style="color:#0d00ff">~[figure @ *public/figures/07A/dotplot_genomic_regions...*]~</span>
 
+Compute p-values:
+
+
+
+```r
+# CGIs
+h3.1 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.1K27M"  & annotation == "CGI") %>% pull(n)
+h3.3 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.3K27M"  & annotation == "CGI") %>% pull(n)
+pfa  <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "EZHIP-PFA" & annotation == "CGI") %>% pull(n)
+wt   <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3WT"      & annotation == "CGI") %>% pull(n)
+
+tribble(
+    ~ "Comp", ~ "pvalue",
+    "H3.1 vs H3WT", t.test(h3.1, wt)$p.value,
+    "H3.3 vs H3WT", t.test(h3.3, wt)$p.value,
+    "PFA  vs H3WT", t.test(pfa,  wt)$p.value
+)
+```
+
+<div data-pagedtable="false">
+  <script data-pagedtable-source type="application/json">
+{"columns":[{"label":["Comp"],"name":[1],"type":["chr"],"align":["left"]},{"label":["pvalue"],"name":[2],"type":["dbl"],"align":["right"]}],"data":[{"1":"H3.1 vs H3WT","2":"0.0241672794"},{"1":"H3.3 vs H3WT","2":"0.0257190223"},{"1":"PFA  vs H3WT","2":"0.0009043772"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+
+```r
+# SUZ12
+h3.1 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.1K27M"  & annotation == "SUZ12_K27M") %>% pull(n)
+h3.3 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.3K27M"  & annotation == "SUZ12_K27M") %>% pull(n)
+pfa  <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "EZHIP-PFA" & annotation == "SUZ12_K27M") %>% pull(n)
+wt   <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3WT"      & annotation == "SUZ12_K27M") %>% pull(n)
+
+tribble(
+    ~ "Comp", ~ "pvalue",
+    "H3.1 vs H3WT", t.test(h3.1, wt)$p.value,
+    "H3.3 vs H3WT", t.test(h3.3, wt)$p.value,
+    "PFA  vs H3WT", t.test(pfa,  wt)$p.value
+)
+```
+
+<div data-pagedtable="false">
+  <script data-pagedtable-source type="application/json">
+{"columns":[{"label":["Comp"],"name":[1],"type":["chr"],"align":["left"]},{"label":["pvalue"],"name":[2],"type":["dbl"],"align":["right"]}],"data":[{"1":"H3.1 vs H3WT","2":"0.062988723"},{"1":"H3.3 vs H3WT","2":"0.022642899"},{"1":"PFA  vs H3WT","2":"0.001617436"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
 
 # Quantification of H3K27me3/2 genome-wide
 
@@ -1163,7 +1170,7 @@ summary(data_k27me3_cgi_long$RPKM)
 
 ```r
 n_cgi_marked <- map_dfr(1:10, ~ data_k27me3_cgi_long %>% 
-                            # for each sample (in each group), count how many CGIs have RPKM > 1
+                            # for each sample (in each group), count how many CGIs have RPKM > threshold
                             group_by(Sample, Group, Group_granular) %>% 
                             summarize(N_marked = sum(RPKM > .x), .groups = "drop") %>% 
                             mutate(Threshold = .x))
@@ -1268,7 +1275,7 @@ data_k27me2_100kb_long <- data_k27me2_100kb %>%
     ))
 
 n_100kb_marked <- map_dfr(seq(0.6, 1.5, by = 0.1), ~ data_k27me2_100kb_long %>% 
-                              # for each sample (in each group), count how many CGIs have RPKM > 1
+                              # for each sample (in each group), count how many CGIs have RPKM > threshold
                               group_by(Sample, Group, Group_granular) %>% 
                               summarize(N_marked = sum(RPKM > .x), .groups = "drop") %>% 
                               mutate(Threshold = .x))
@@ -1420,7 +1427,7 @@ t.test(h3.1, h3.1_ko)
 
 
 ```r
-# H3.1
+# H3.3
 h3.3 <- data_k27me2_domains %>% filter(Genotype == "H3.3K27M") %>% pull(Total_coverage)
 h3.3_ko <- data_k27me2_domains %>% filter(Genotype == "H3.3K27M-KO") %>% pull(Total_coverage)
 t.test(h3.3, h3.3_ko)
@@ -1547,7 +1554,7 @@ This document was last rendered on:
 
 
 ```
-## 2022-06-29 10:42:41
+## 2022-09-12 15:34:31
 ```
 
 
@@ -1559,7 +1566,7 @@ The git repository and last commit:
 ```
 ## Local:    master /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public
 ## Remote:   master @ origin (git@github.com:fungenomics/HGG-oncohistones.git)
-## Head:     [009cdf0] 2022-06-29: Add README and update infrastructure
+## Head:     [1a06382] 2022-09-08: Update comments, documentation, etc, based on lab feedback
 ```
 
 
@@ -1581,14 +1588,14 @@ The R session info:
 ## ─ Session info ───────────────────────────────────────────────────────────────
 ##  setting  value                           
 ##  version  R version 3.6.1 (2019-07-05)    
-##  os       Rocky Linux 8.5 (Green Obsidian)
+##  os       Rocky Linux 8.6 (Green Obsidian)
 ##  system   x86_64, linux-gnu               
 ##  ui       X11                             
 ##  language (EN)                            
 ##  collate  en_CA.UTF-8                     
 ##  ctype    en_CA.UTF-8                     
 ##  tz       EST5EDT                         
-##  date     2022-06-29                      
+##  date     2022-09-12                      
 ## 
 ## ─ Packages ───────────────────────────────────────────────────────────────────
 ##  ! package              * version    date       lib
@@ -1829,7 +1836,7 @@ The R session info:
 ##  Bioconductor                     
 ## 
 ## [1] /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public/renv/library/R-3.6/x86_64-pc-linux-gnu
-## [2] /tmp/RtmppLqsy4/renv-system-library
+## [2] /tmp/RtmpsrGsxB/renv-system-library
 ## 
 ##  P ── Loaded and on-disk path mismatch.
 ```
@@ -1843,9 +1850,9 @@ The resources requested when this document was last rendered:
 
 
 ```
-## #SBATCH --time=00:20:00
+## #SBATCH --time=01:00:00
 ## #SBATCH --cpus-per-task=1
-## #SBATCH --mem=10G
+## #SBATCH --mem=20G
 ```
 
 

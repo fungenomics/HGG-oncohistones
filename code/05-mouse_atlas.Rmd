@@ -91,7 +91,7 @@ mouse_signatures <- cluster_signatures$mm_sym
 
 # Compute dendrograms
 
-Compute dendrograms based on correlation between mean transcriptome of each cluster:
+Compute dendrograms based on correlation between mean transcriptome of each cluster. We use [pvclust](https://cran.r-project.org/web/packages/pvclust/index.html) for constructing dendrograms.
 
 ```{r generate_dend}
 

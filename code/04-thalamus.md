@@ -1,7 +1,7 @@
 ---
 title: "04 - Analysis of thalamic H3K27M tumors"
 author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
-date: "29 June, 2022"
+date: "12 September, 2022"
 params:
   resources: "NOT SPECIFIED"
 output:
@@ -217,6 +217,7 @@ for (i in seq_along(params_prosomere)) {
     x_i <- x_positions[i]
     params_i <- params_prosomere[[i]]
 
+    # iterating through samples,
     # plot H3K27ac and H3K27me3
     pwalk(list(prosomere_config$bw, prosomere_config$ID_paper, prosomere_config$Data, prosomere_config$Ymax, y_positions),
           ~ bb_placeSignalAndLabel(data = ..1,
@@ -263,7 +264,7 @@ This document was last rendered on:
 
 
 ```
-## 2022-06-29 10:10:30
+## 2022-09-12 15:22:30
 ```
 
 
@@ -275,7 +276,7 @@ The git repository and last commit:
 ```
 ## Local:    master /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public
 ## Remote:   master @ origin (git@github.com:fungenomics/HGG-oncohistones.git)
-## Head:     [009cdf0] 2022-06-29: Add README and update infrastructure
+## Head:     [1a06382] 2022-09-08: Update comments, documentation, etc, based on lab feedback
 ```
 
 
@@ -297,14 +298,14 @@ The R session info:
 ## ─ Session info ───────────────────────────────────────────────────────────────
 ##  setting  value                           
 ##  version  R version 3.6.1 (2019-07-05)    
-##  os       Rocky Linux 8.5 (Green Obsidian)
+##  os       Rocky Linux 8.6 (Green Obsidian)
 ##  system   x86_64, linux-gnu               
 ##  ui       X11                             
 ##  language (EN)                            
 ##  collate  en_CA.UTF-8                     
 ##  ctype    en_CA.UTF-8                     
 ##  tz       EST5EDT                         
-##  date     2022-06-29                      
+##  date     2022-09-12                      
 ## 
 ## ─ Packages ───────────────────────────────────────────────────────────────────
 ##  ! package                           * version    date       lib
@@ -328,6 +329,7 @@ The R session info:
 ##  P bslib                               0.2.5      2021-05-12 [?]
 ##  P callr                               3.7.0      2021-04-20 [?]
 ##  P cli                                 2.5.0      2021-04-26 [?]
+##  P codetools                           0.2-16     2018-12-24 [?]
 ##  P colorspace                          2.0-1      2021-05-04 [?]
 ##  P cowplot                           * 1.1.1      2020-12-30 [?]
 ##  P crayon                              1.4.1      2021-02-08 [?]
@@ -360,6 +362,7 @@ The R session info:
 ##  P gridGraphics                        0.5-1      2020-12-13 [?]
 ##  P gtable                              0.3.0      2019-03-25 [?]
 ##  P here                              * 0.1        2017-05-28 [?]
+##  P highr                               0.9        2021-04-16 [?]
 ##  P hms                                 1.0.0      2021-01-13 [?]
 ##  P htmltools                           0.5.1.1    2021-01-22 [?]
 ##  P httr                                1.4.2      2020-07-20 [?]
@@ -454,21 +457,23 @@ The R session info:
 ##  CRAN (R 3.6.1)                        
 ##  CRAN (R 3.6.1)                        
 ##  CRAN (R 3.6.1)                        
-##  Bioconductor                          
-##  CRAN (R 3.6.1)                        
-##  CRAN (R 3.6.1)                        
-##  CRAN (R 3.6.1)                        
-##  CRAN (R 3.6.1)                        
-##  CRAN (R 3.6.1)                        
-##  CRAN (R 3.6.1)                        
-##  CRAN (R 3.6.1)                        
-##  CRAN (R 3.6.1)                        
 ##  CRAN (R 3.6.1)                        
 ##  Bioconductor                          
+##  CRAN (R 3.6.1)                        
+##  CRAN (R 3.6.1)                        
+##  CRAN (R 3.6.1)                        
+##  CRAN (R 3.6.1)                        
+##  CRAN (R 3.6.1)                        
+##  CRAN (R 3.6.1)                        
+##  CRAN (R 3.6.1)                        
+##  CRAN (R 3.6.1)                        
+##  CRAN (R 3.6.1)                        
 ##  Bioconductor                          
 ##  Bioconductor                          
 ##  Bioconductor                          
 ##  Bioconductor                          
+##  Bioconductor                          
+##  CRAN (R 3.6.1)                        
 ##  CRAN (R 3.6.1)                        
 ##  CRAN (R 3.6.1)                        
 ##  CRAN (R 3.6.1)                        
@@ -547,7 +552,7 @@ The R session info:
 ##  Bioconductor                          
 ## 
 ## [1] /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public/renv/library/R-3.6/x86_64-pc-linux-gnu
-## [2] /tmp/RtmpcI8FEk/renv-system-library
+## [2] /tmp/RtmpBnm3KZ/renv-system-library
 ## 
 ##  P ── Loaded and on-disk path mismatch.
 ```
@@ -561,9 +566,9 @@ The resources requested when this document was last rendered:
 
 
 ```
-## #SBATCH --time=00:20:00
+## #SBATCH --time=01:00:00
 ## #SBATCH --cpus-per-task=1
-## #SBATCH --mem=10G
+## #SBATCH --mem=20G
 ```
 
 

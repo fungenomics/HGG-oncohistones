@@ -91,7 +91,7 @@ meta_chip <- read_tsv(here("data/metadata/metadata_chip_all.tsv"))
 
 ## Heatmaps
 
-Prepare data for heatmaps:
+Prepare data for heatmaps, which are then generated int he scripts `07D` and `07E` using [deeptools](https://deeptools.readthedocs.io/en/develop/).
 
 ```{r heatmap_input, cache = FALSE}
 
@@ -382,12 +382,12 @@ suz12 <- list(here("data/ChIPseq/peaks/cell_parental/SUZ12/BT245_SUZ12.narrowPea
 extra.cols <- c(signalValue = "numeric", pValue = "numeric", qValue = "numeric", peak = "integer")
 
 bed.suz12.K27M.gr <- map(suz12[1:2], ~ rtracklayer::import(.x, extraCols = extra.cols)) %>% 
-    GRangesList() %>% # make into the right data structure
-    unlist()          # collapse into one list
+    GRangesList() %>% # covert to GenomicRangesList
+    unlist()          # collapse into one set of granges
 
 bed.suz12.WT.gr   <- map(suz12[3:4], ~ rtracklayer::import(.x, extraCols = extra.cols)) %>% 
-    GRangesList() %>% # make into the right data structure
-    unlist()          # collapse into one list
+    GRangesList() %>% # covert to GenomicRangesList
+    unlist()          # collapse into one set of granges
 
 # collate
 annot.gr <- list(
@@ -504,7 +504,7 @@ What type of genomic regions retain H3K27me3?
 We can look at the top 1% of bins, for each sample, and ask what the distribution
 of genomic regions is for each sample/each group.
 
-```{r barplot_genomic_regions, dependson = c('deeptools_input', 'make_annot'), fig.width = 8, fig.height = 9, echo_fig = TRUE}
+```{r barplot_genomic_regions, dependson = c('deeptools_input', 'make_annot'), fig.width = 8, fig.height = 9}
 
 features <- c("location", "class", "CGI", "SUZ12_K27M", "SUZ12_WT")
 samples <- colnames(df.signal.annot)[9:ncol(df.signal.annot)]
@@ -567,30 +567,6 @@ df.top.bins.k27me3_long_prop <- df.top.bins.k27me3_long %>%
             Group == "HGG-H3WT-Cortex" ~ "H3WT"
         ))
 
-h3.1 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.1K27M"  & annotation == "CGI") %>% pull(n)
-h3.3 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.3K27M"  & annotation == "CGI") %>% pull(n)
-pfa  <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "EZHIP-PFA" & annotation == "CGI") %>% pull(n)
-wt   <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3WT"      & annotation == "CGI") %>% pull(n)
-
-tribble(
-    ~ "Comp", ~ "pvalue",
-    "H3.1 vs H3WT", t.test(h3.1, wt)$p.value,
-    "H3.3 vs H3WT", t.test(h3.3, wt)$p.value,
-    "PFA  vs H3WT", t.test(pfa,  wt)$p.value
-)
-
-h3.1 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.1K27M"  & annotation == "SUZ12_K27M") %>% pull(n)
-h3.3 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.3K27M"  & annotation == "SUZ12_K27M") %>% pull(n)
-pfa  <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "EZHIP-PFA" & annotation == "SUZ12_K27M") %>% pull(n)
-wt   <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3WT"      & annotation == "SUZ12_K27M") %>% pull(n)
-
-tribble(
-    ~ "Comp", ~ "pvalue",
-    "H3.1 vs H3WT", t.test(h3.1, wt)$p.value,
-    "H3.3 vs H3WT", t.test(h3.3, wt)$p.value,
-    "PFA  vs H3WT", t.test(pfa,  wt)$p.value
-)
-
 df.top.bins.k27me3_long_prop %>% 
     rr_ggplot(aes(x = Group2, y = Prop), plot_num = 1) +
     geom_jitter(aes(fill = Genotype, shape = Genotype), size = 4, alpha = 0.8, width = 0.1) +
@@ -607,6 +583,37 @@ df.top.bins.k27me3_long_prop %>%
 
 ```
 
+Compute p-values:
+
+```{r pval_genomic_regions}
+
+# CGIs
+h3.1 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.1K27M"  & annotation == "CGI") %>% pull(n)
+h3.3 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.3K27M"  & annotation == "CGI") %>% pull(n)
+pfa  <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "EZHIP-PFA" & annotation == "CGI") %>% pull(n)
+wt   <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3WT"      & annotation == "CGI") %>% pull(n)
+
+tribble(
+    ~ "Comp", ~ "pvalue",
+    "H3.1 vs H3WT", t.test(h3.1, wt)$p.value,
+    "H3.3 vs H3WT", t.test(h3.3, wt)$p.value,
+    "PFA  vs H3WT", t.test(pfa,  wt)$p.value
+)
+
+# SUZ12
+h3.1 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.1K27M"  & annotation == "SUZ12_K27M") %>% pull(n)
+h3.3 <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3.3K27M"  & annotation == "SUZ12_K27M") %>% pull(n)
+pfa  <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "EZHIP-PFA" & annotation == "SUZ12_K27M") %>% pull(n)
+wt   <- df.top.bins.k27me3_long_prop %>% filter(Genotype == "H3WT"      & annotation == "SUZ12_K27M") %>% pull(n)
+
+tribble(
+    ~ "Comp", ~ "pvalue",
+    "H3.1 vs H3WT", t.test(h3.1, wt)$p.value,
+    "H3.3 vs H3WT", t.test(h3.3, wt)$p.value,
+    "PFA  vs H3WT", t.test(pfa,  wt)$p.value
+)
+
+````
 
 # Quantification of H3K27me3/2 genome-wide
 
@@ -915,7 +922,7 @@ data_k27me3_cgi_long <- data_k27me3_cgi %>%
 summary(data_k27me3_cgi_long$RPKM)
 
 n_cgi_marked <- map_dfr(1:10, ~ data_k27me3_cgi_long %>% 
-                            # for each sample (in each group), count how many CGIs have RPKM > 1
+                            # for each sample (in each group), count how many CGIs have RPKM > threshold
                             group_by(Sample, Group, Group_granular) %>% 
                             summarize(N_marked = sum(RPKM > .x), .groups = "drop") %>% 
                             mutate(Threshold = .x))
@@ -1005,7 +1012,7 @@ data_k27me2_100kb_long <- data_k27me2_100kb %>%
     ))
 
 n_100kb_marked <- map_dfr(seq(0.6, 1.5, by = 0.1), ~ data_k27me2_100kb_long %>% 
-                              # for each sample (in each group), count how many CGIs have RPKM > 1
+                              # for each sample (in each group), count how many CGIs have RPKM > threshold
                               group_by(Sample, Group, Group_granular) %>% 
                               summarize(N_marked = sum(RPKM > .x), .groups = "drop") %>% 
                               mutate(Threshold = .x))
@@ -1119,7 +1126,7 @@ h3.1 <- data_k27me2_domains %>% filter(Genotype == "H3.1K27M") %>% pull(Total_co
 h3.1_ko <- data_k27me2_domains %>% filter(Genotype == "H3.1K27M-KO") %>% pull(Total_coverage)
 t.test(h3.1, h3.1_ko)
 
-# H3.1
+# H3.3
 h3.3 <- data_k27me2_domains %>% filter(Genotype == "H3.3K27M") %>% pull(Total_coverage)
 h3.3_ko <- data_k27me2_domains %>% filter(Genotype == "H3.3K27M-KO") %>% pull(Total_coverage)
 t.test(h3.3, h3.3_ko)

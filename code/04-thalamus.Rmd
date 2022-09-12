@@ -157,6 +157,7 @@ for (i in seq_along(params_prosomere)) {
     x_i <- x_positions[i]
     params_i <- params_prosomere[[i]]
 
+    # iterating through samples,
     # plot H3K27ac and H3K27me3
     pwalk(list(prosomere_config$bw, prosomere_config$ID_paper, prosomere_config$Data, prosomere_config$Ymax, y_positions),
           ~ bb_placeSignalAndLabel(data = ..1,

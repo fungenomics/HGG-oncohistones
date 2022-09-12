@@ -1,7 +1,7 @@
 ---
 title: "06 - Effect of ACVR1"
 author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
-date: "29 June, 2022"
+date: "12 September, 2022"
 params:
   resources: "NOT SPECIFIED"
 output:
@@ -173,9 +173,10 @@ Data for clone formation assay for ACVR1 mutant and KO cell lines.
 # load data
 clono <- suppressMessages(read_tsv(here("data/experimental/clonogenic_assay_DIPG36_@am.txt")))
 
-# tidy & plot
+# define standard error to quantify uncertainty around the mean
 se <- function(x) sqrt(var(x)/length(x))
 
+# tidy & plot
 clono_tidy <- clono %>% 
     set_colnames(c("ACVR1 mutant", "ACVR1 KO")) %>% 
     gather(Condition, N_clones) %>% 
@@ -241,6 +242,7 @@ doubling_H3.1_vs_H3.3_tidy <- doubling_H3.1_vs_H3.3 %>%
     gather(Cell_line, Doubling_time) %>% 
     filter(!is.na(Doubling_time))
 
+# use standard deviation to assesss variability of the measurements
 doubling_H3.1_vs_H3.3_tidy %>% 
     group_by(Cell_line) %>% 
     summarize(Doubling_mean = mean(Doubling_time),
@@ -312,7 +314,7 @@ This document was last rendered on:
 
 
 ```
-## 2022-06-29 10:38:11
+## 2022-09-12 15:23:43
 ```
 
 
@@ -324,7 +326,7 @@ The git repository and last commit:
 ```
 ## Local:    master /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public
 ## Remote:   master @ origin (git@github.com:fungenomics/HGG-oncohistones.git)
-## Head:     [009cdf0] 2022-06-29: Add README and update infrastructure
+## Head:     [1a06382] 2022-09-08: Update comments, documentation, etc, based on lab feedback
 ```
 
 
@@ -333,14 +335,6 @@ The random seed was set with `set.seed(100)`
 
 The R session info:
 <details>
-
-
-
-```
-## Registered S3 method overwritten by 'cli':
-##   method     from    
-##   print.boxx spatstat
-```
 
 
 
@@ -354,14 +348,14 @@ The R session info:
 ## ─ Session info ───────────────────────────────────────────────────────────────
 ##  setting  value                           
 ##  version  R version 3.6.1 (2019-07-05)    
-##  os       Rocky Linux 8.5 (Green Obsidian)
+##  os       Rocky Linux 8.6 (Green Obsidian)
 ##  system   x86_64, linux-gnu               
 ##  ui       X11                             
 ##  language (EN)                            
 ##  collate  en_CA.UTF-8                     
 ##  ctype    en_CA.UTF-8                     
 ##  tz       EST5EDT                         
-##  date     2022-06-29                      
+##  date     2022-09-12                      
 ## 
 ## ─ Packages ───────────────────────────────────────────────────────────────────
 ##  ! package        * version    date       lib
@@ -387,6 +381,7 @@ The R session info:
 ##  P ellipsis         0.3.2      2021-04-29 [?]
 ##  P evaluate         0.14       2019-05-28 [?]
 ##  P fansi            0.4.2      2021-01-15 [?]
+##  P farver           2.1.0      2021-02-28 [?]
 ##  P fastmap          1.1.0      2021-01-25 [?]
 ##  P fastmatch        1.1-0      2017-01-28 [?]
 ##  P fgsea          * 1.12.0     2019-10-29 [?]
@@ -405,6 +400,7 @@ The R session info:
 ##  P gridExtra        2.3        2017-09-09 [?]
 ##  P gtable           0.3.0      2019-03-25 [?]
 ##  P here           * 0.1        2017-05-28 [?]
+##  P highr            0.9        2021-04-16 [?]
 ##  P hms              1.0.0      2021-01-13 [?]
 ##  P htmltools        0.5.1.1    2021-01-22 [?]
 ##  P htmlwidgets      1.5.3      2020-12-10 [?]
@@ -418,6 +414,7 @@ The R session info:
 ##  P jsonlite         1.7.2      2020-12-09 [?]
 ##  P KernSmooth       2.23-15    2015-06-29 [?]
 ##  P knitr            1.33       2021-04-24 [?]
+##  P labeling         0.4.2      2020-10-20 [?]
 ##  P later            1.0.0      2019-10-04 [?]
 ##  P lattice          0.20-44    2021-05-02 [?]
 ##  P lazyeval         0.2.2      2019-03-15 [?]
@@ -467,6 +464,7 @@ The R session info:
 ##  P ROCR             1.0-11     2020-05-02 [?]
 ##  P rpart            4.1-15     2019-04-12 [?]
 ##  P rprojroot        2.0.2      2020-11-15 [?]
+##  P rstudioapi       0.13       2020-11-12 [?]
 ##  P rsvd             1.0.3      2020-02-17 [?]
 ##  P Rtsne            0.15       2018-11-10 [?]
 ##  P sass             0.4.0      2021-05-12 [?]
@@ -523,7 +521,9 @@ The R session info:
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
+##  CRAN (R 3.6.1)                       
 ##  Bioconductor                         
+##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
@@ -616,6 +616,8 @@ The R session info:
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
+##  CRAN (R 3.6.1)                       
+##  CRAN (R 3.6.1)                       
 ##  Github (rmflight/testrmd@0735c20)    
 ##  CRAN (R 3.6.1)                       
 ##  CRAN (R 3.6.1)                       
@@ -634,7 +636,7 @@ The R session info:
 ##  CRAN (R 3.6.1)                       
 ## 
 ## [1] /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public/renv/library/R-3.6/x86_64-pc-linux-gnu
-## [2] /tmp/RtmpKwVxDN/renv-system-library
+## [2] /tmp/RtmpYBfkw4/renv-system-library
 ## 
 ##  P ── Loaded and on-disk path mismatch.
 ```
@@ -648,9 +650,9 @@ The resources requested when this document was last rendered:
 
 
 ```
-## #SBATCH --time=00:20:00
+## #SBATCH --time=01:00:00
 ## #SBATCH --cpus-per-task=1
-## #SBATCH --mem=10G
+## #SBATCH --mem=20G
 ```
 
 

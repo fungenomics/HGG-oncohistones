@@ -1,7 +1,7 @@
 ---
 title: "05 - Summary figures for extended mouse atlas"
 author: "Selin Jessa [[selin.jessa@mail.mcgill.ca](mailto:selin.jessa@mail.mcgill.ca)]"
-date: "29 June, 2022"
+date: "12 September, 2022"
 params:
   resources: "NOT SPECIFIED"
 output:
@@ -144,7 +144,7 @@ mouse_signatures <- cluster_signatures$mm_sym
 
 # Compute dendrograms
 
-Compute dendrograms based on correlation between mean transcriptome of each cluster:
+Compute dendrograms based on correlation between mean transcriptome of each cluster. We use [pvclust](https://cran.r-project.org/web/packages/pvclust/index.html) for constructing dendrograms.
 
 
 
@@ -500,7 +500,7 @@ This document was last rendered on:
 
 
 ```
-## 2022-06-29 10:14:11
+## 2022-09-12 15:22:22
 ```
 
 
@@ -512,7 +512,7 @@ The git repository and last commit:
 ```
 ## Local:    master /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public
 ## Remote:   master @ origin (git@github.com:fungenomics/HGG-oncohistones.git)
-## Head:     [009cdf0] 2022-06-29: Add README and update infrastructure
+## Head:     [1a06382] 2022-09-08: Update comments, documentation, etc, based on lab feedback
 ```
 
 
@@ -542,14 +542,14 @@ The R session info:
 ## ─ Session info ───────────────────────────────────────────────────────────────
 ##  setting  value                           
 ##  version  R version 3.6.1 (2019-07-05)    
-##  os       Rocky Linux 8.5 (Green Obsidian)
+##  os       Rocky Linux 8.6 (Green Obsidian)
 ##  system   x86_64, linux-gnu               
 ##  ui       X11                             
 ##  language (EN)                            
 ##  collate  en_CA.UTF-8                     
 ##  ctype    en_CA.UTF-8                     
 ##  tz       EST5EDT                         
-##  date     2022-06-29                      
+##  date     2022-09-12                      
 ## 
 ## ─ Packages ───────────────────────────────────────────────────────────────────
 ##  ! package        * version    date       lib source                           
@@ -690,7 +690,7 @@ The R session info:
 ##  P zoo              1.8-9      2021-03-09 [?] CRAN (R 3.6.1)                   
 ## 
 ## [1] /lustre06/project/6004736/sjessa/from_narval/HGG-oncohistones/public/renv/library/R-3.6/x86_64-pc-linux-gnu
-## [2] /tmp/RtmpH2zXAX/renv-system-library
+## [2] /tmp/RtmppM1df5/renv-system-library
 ## 
 ##  P ── Loaded and on-disk path mismatch.
 ```
@@ -704,9 +704,9 @@ The resources requested when this document was last rendered:
 
 
 ```
-## #SBATCH --time=00:20:00
+## #SBATCH --time=01:00:00
 ## #SBATCH --cpus-per-task=1
-## #SBATCH --mem=10G
+## #SBATCH --mem=20G
 ```
 
 

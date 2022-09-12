@@ -113,9 +113,10 @@ Data for clone formation assay for ACVR1 mutant and KO cell lines.
 # load data
 clono <- suppressMessages(read_tsv(here("data/experimental/clonogenic_assay_DIPG36_@am.txt")))
 
-# tidy & plot
+# define standard error to quantify uncertainty around the mean
 se <- function(x) sqrt(var(x)/length(x))
 
+# tidy & plot
 clono_tidy <- clono %>% 
     set_colnames(c("ACVR1 mutant", "ACVR1 KO")) %>% 
     gather(Condition, N_clones) %>% 
@@ -153,6 +154,7 @@ doubling_H3.1_vs_H3.3_tidy <- doubling_H3.1_vs_H3.3 %>%
     gather(Cell_line, Doubling_time) %>% 
     filter(!is.na(Doubling_time))
 
+# use standard deviation to assesss variability of the measurements
 doubling_H3.1_vs_H3.3_tidy %>% 
     group_by(Cell_line) %>% 
     summarize(Doubling_mean = mean(Doubling_time),
