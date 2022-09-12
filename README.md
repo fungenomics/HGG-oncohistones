@@ -214,8 +214,8 @@ For scRNAseq, scATACseq and scMultiome samples, the cell metadata provided with 
 columns matching the analyses used in the paper:
 
 * `Cell_type_granular_mouse_correlations` --> cell-type projection to the extended mouse atlas, based on the Spearman correlation, using the cluster label (REGION-TIMEPOINT_CLUSTER)
-* `Cell_type_mouse_correlations` --> cell-type projection to the extended mouse atlas, based on the Spearman correlation, summarized to a broader cell class (ontology is described in Table S3B)
-* `Cell_type_consensus_Jessa2022`--> consensus cell-type projection to the extended mouse atlas, based on agreement between Spearman correlation and at least one other cell-type projection method. Cells without a consensus are classified as "Uncertain".
+* `Cell_type_mouse_correlations` --> cell-type projection to the extended mouse atlas, based on the Spearman correlation, summarized to a broader cell class (ontology is described in Table S7)
+* `Cell_type_consensus_Jessa2022`--> consensus cell-type projection to the extended mouse atlas, based on agreement between Spearman correlation and at least one other cell-type projection method. Cells without a consensus are classified as "Uncertain", see Methods for details
 * `Malignant_normal_consensus_Jessa2022` --> assignment as normal or malignant, used to decide whether cells should be included in downstream analyses
 
 The cell annotations/metadata are included in [processed data deposition on Zenodo](https://doi.org/10.5281/zenodo.6773261).
@@ -241,4 +241,4 @@ If you use or modify code provided here, please cite this work as follows:
 ## Acknowledgements
 
 - Thank you to the Kleinman Lab and particularly Bhavyaa Chandarana ([@bhavyaac](https://github.com/bhavyaac)) for code review and feedback
-- The "Reproducibility" section of each R Markdown was inspired by [workflowr](https://github.com/workflowr/workflowr)
+- The "Reproducibility report" section of each R Markdown was inspired by [workflowr](https://github.com/workflowr/workflowr)
