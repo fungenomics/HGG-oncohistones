@@ -8,6 +8,8 @@ Link to repository: https://github.com/fungenomics/HGG-oncohistones
 
 This repository is archived on [Zenodo](https://doi.org/10.5281/zenodo.6647837).
 
+This repository contains code; please see the associated [Zenodo record](https://doi.org/10.5281/zenodo.6773261) for the processed data including counts matrices, cell annotations, and genome wide histone mark levels. Raw data have been deposited to GEO ([GSE188625](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE188625)) and EGA ([EGAS00001005773](https://ega-archive.org/studies/EGAS00001005773)).
+
 Contents:
 * [Contents of the repository](https://github.com/fungenomics/HGG-oncohistones#contents-of-this-repository)
 * [Notes for reproducibility](https://github.com/fungenomics/HGG-oncohistones#notes-for-reproducibility)
@@ -137,7 +139,7 @@ theme elements (`theme_min()`, `no_legend()`, `rotate_x()`, etc) are defined in 
 
 ###  Tables
 
-Supplementary tables (included with the manuscript) and processed data tables were assembled from the following input/output/figure source data files. (Only tables produced with the code included here are listed below.)
+Supplementary tables (included with the manuscript) and processed data tables (on [Zenodo](https://doi.org/10.5281/zenodo.6773261)) were assembled from the following input/output/figure source data files. (Only tables produced with the code included here are listed below.)
 
 | Supplementary table | Path |
 | ----- | ---- |
@@ -216,13 +218,13 @@ columns matching the analyses used in the paper:
 * `Cell_type_consensus_Jessa2022`--> consensus cell-type projection to the extended mouse atlas, based on agreement between Spearman correlation and at least one other cell-type projection method. Cells without a consensus are classified as "Uncertain".
 * `Malignant_normal_consensus_Jessa2022` --> assignment as normal or malignant, used to decide whether cells should be included in downstream analyses
 
-The cell annotations/metadata are included in the processed data deposition.
+The cell annotations/metadata are included in [processed data deposition on Zenodo](https://doi.org/10.5281/zenodo.6773261).
 
 
 ### Human fetal brain scRNAseq data
 
 Human fetal data brain data for the hindbrain and thalamus were obtained from two
-studies, Eze et al, Nature Neuroscience, 2021, and Bhaduri et al, Nature, 2021.
+studies, [Eze et al, Nature Neuroscience, 2021](https://www.nature.com/articles/s41593-020-00794-1), and [Bhaduri et al, Nature, 2021](https://www.nature.com/articles/s41586-021-03910-8).
 
 - The count matrices for each sample, as produced by Cellranger, were downloaded from the [BICCN repository](http://data.nemoarchive.org/biccn/grant/u01_devhu/kriegstein/transcriptome/scell/10x_v2/human/processed/counts/).
 - The data was processed using the scRNAseq preprocessing workflow as described above for human tumor samples (`./code/scripts/scRNAseq_preprocessing.Rmd`)
@@ -236,3 +238,7 @@ If you use or modify code provided here, please cite this work as follows:
 
 > Selin Jessa, Steven Hébert, Samantha Worme, Hussein Lakkis, Maud Hulswit, Srinidhi Varadharajan, Nisha Kabir, and Claudia L. Kleinman. (2022). HGG-oncohistones analysis code. Zenodo. https://doi.org/10.5281/zenodo.6647837
 
+## Acknowledgements
+
+- Thank you to the Kleinman Lab and particularly Bhavyaa Chandarana ([@bhavyaac](https://github.com/bhavyaac)) for code review and feedback
+- The "Reproducibility" section of each R Markdown was inspired by [workflowr](https://github.com/workflowr/workflowr)
