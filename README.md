@@ -115,20 +115,20 @@ Code to reproduce analyses is saved in `code` and `R-4/code`.
 on inputs from pipelines, I've tried to note within the R Markdown documents where
 these scripts/pipelines are located.
 
-Pointers to code for some key analyses:
+This table contains pointers to code for some key analyses, **the links in the `Analysis` column lead to rendered HTMLs.**
 
-| Analysis | Path |
-| -------- | ---- | 
-| Oncoprint | `./code/00-oncoprints.{Rmd,html}` |
-| cNMF analysis of variable gene programs | `./R-4/code/02-celltype_identity.{Rmd,html}` |
-| Cell type identity in tumors with consensus projections | `./R-4/code/04A-consensus_projections.{Rmd,html}` |
-| Characterization of ependymal cells | `./code/01C-ependymal.{Rmd,html}` |
-| Scatterplots for RNAseq/K27ac/K27me3 | `./code/02-bulk_comparisons.{Rmd,html}` |
-| Systematic HOX analysis/quantification | `./code/03A-HOX.{Rmd,html}` |
-| Analysis of D-V patterning | `./code/03B-hindbrain_DV.{Rmd,html}` |
-| Analysis of thalamic patterning | `./code/04-thalamus.{Rmd,html}` |
-| Analysis of histone marks in tumors & cell lines | `./code/07A-histone_marks.{Rmd,html}` |
-| Comparison of tumor epigenomes to scChIP of normal cell types | `./R-4/code/05-celltype_epigenomic_similarity.{Rmd,html}` |
+| Figure | Analysis | Path |
+| --- | -------- | ---- | 
+| Fig 1 | [Oncoprint](https://fungenomics.github.io/HGG-oncohistones/code/00-oncoprints.html) | `./code/00-oncoprints.Rmd` |
+| Fig 1, Ext Fig 2 | [cNMF analysis of variable gene programs](https://fungenomics.github.io/HGG-oncohistones/) | `./R-4/code/02-celltype_identity.Rmd` |
+| Fig 1 | [Cell type identity in tumors with consensus projections](https://fungenomics.github.io/HGG-oncohistones/R-4/code/04A-consensus_projections.html) | `./R-4/code/04A-consensus_projections.Rmd` |
+| Ext Fig 3 | [Characterization of ependymal cells](https://fungenomics.github.io/HGG-oncohistones/code/01C-ependymal.html) | `./code/01C-ependymal.Rmd` |
+| Fig 2, 4 | [Scatterplots for RNAseq/K27ac/K27me3](https://fungenomics.github.io/HGG-oncohistones/code/02-bulk_comparisons.html) | `./code/02-bulk_comparisons.Rmd` |
+| Fig 2        | [Systematic HOX analysis/quantification](https://fungenomics.github.io/HGG-oncohistones/code/03A-HOX.html) | `./code/03A-HOX.Rmd` |
+| Fig 4, 5, 6  | [Analysis of dorsal-ventral patterning](https://fungenomics.github.io/HGG-oncohistones/code/03B-hindbrain_DV.html) | `./code/03B-hindbrain_DV.Rmd` |
+| Fig 3 | [Analysis of thalamic patterning](https://fungenomics.github.io/HGG-oncohistones/code/04-thalamus.html) | `./code/04-thalamus.Rmd` |
+| Fig 7 | [Analysis of histone marks in tumors & cell lines](https://fungenomics.github.io/HGG-oncohistones/code/07A-histone_marks.html) | `./code/07A-histone_marks.Rmd` |
+| Ext Fig 8 | [Comparison of tumor epigenomes to scChIP of normal cell types](https://fungenomics.github.io/HGG-oncohistones/R-4/code/05-celltype_epigenomic_similarity.Rmd) | `./R-4/code/05-celltype_epigenomic_similarity.Rmd` |
 
 
 ### Palettes & custom plotting utilities
