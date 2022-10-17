@@ -120,7 +120,7 @@ This table contains pointers to code for some key analyses, **the links in the `
 | Figure | Analysis | Path |
 | --- | -------- | ---- | 
 | Fig 1 | [Oncoprint](https://fungenomics.github.io/HGG-oncohistones/code/00-oncoprints.html) | `./code/00-oncoprints.Rmd` |
-| Fig 1, Ext Fig 2 | [cNMF analysis of variable gene programs](https://fungenomics.github.io/HGG-oncohistones/) | `./R-4/code/02-celltype_identity.Rmd` |
+| Fig 1, Ext Fig 2 | [cNMF analysis of variable gene programs](https://fungenomics.github.io/HGG-oncohistones/R-4/code/02-celltype_identity.html) | `./R-4/code/02-celltype_identity.Rmd` |
 | Fig 1 | [Cell type identity in tumors with consensus projections](https://fungenomics.github.io/HGG-oncohistones/R-4/code/04A-consensus_projections.html) | `./R-4/code/04A-consensus_projections.Rmd` |
 | Ext Fig 3 | [Characterization of ependymal cells](https://fungenomics.github.io/HGG-oncohistones/code/01C-ependymal.html) | `./code/01C-ependymal.Rmd` |
 | Fig 2, 4 | [Scatterplots for RNAseq/K27ac/K27me3](https://fungenomics.github.io/HGG-oncohistones/code/02-bulk_comparisons.html) | `./code/02-bulk_comparisons.Rmd` |
