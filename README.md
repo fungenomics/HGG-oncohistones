@@ -14,7 +14,7 @@ Contents:
 * [Contents of the repository](https://github.com/fungenomics/HGG-oncohistones#contents-of-this-repository)
 * [Notes for reproducibility](https://github.com/fungenomics/HGG-oncohistones#notes-for-reproducibility)
 * [Materials for the manuscript](https://github.com/fungenomics/HGG-oncohistones#materials-for-the-manuscript)
-     * [Code to reproduce key analysies](https://github.com/fungenomics/HGG-oncohistones#code-to-reproduce-key-analyses)
+     * [Code to reproduce key analyses](https://github.com/fungenomics/HGG-oncohistones#code-to-reproduce-key-analyses)
      * [Palettes & custom plotting utilities](https://github.com/fungenomics/HGG-oncohistones#palettes--custom-plotting-utilities)
      * [Tables](https://github.com/fungenomics/HGG-oncohistones#tables)
 * [Processed single-cell data](https://github.com/fungenomics/HGG-oncohistones#processed-single-cell-data)
