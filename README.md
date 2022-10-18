@@ -85,7 +85,8 @@ This table contains pointers to code for the key analyses associated with each f
 | Fig 4-6, Ext Fig 4-6 | [Analysis of dorsal-ventral patterning and NKX6-1/PAX3 activation](https://fungenomics.github.io/HGG-oncohistones/code/03B-NKX61_PAX3.html) | `./code/03B-NKX61_PAX3.Rmd` |
 | Fig 6 | [Analysis of ACVR1 cell lines](https://fungenomics.github.io/HGG-oncohistones/code/06-ACVR1.html) | `./code/06-ACVR1.Rmd` |
 | Fig 7, 8, Ext Fig 7 | [Analysis of histone marks in tumors & cell lines](https://fungenomics.github.io/HGG-oncohistones/code/07A-histone_marks.html) | `./code/07A-histone_marks.Rmd` |
-| Ext Fig 8 | [Comparison of tumor epigenomes to scChIP of normal cell types](https://fungenomics.github.io/HGG-oncohistones/R-4/code/03A-celltype_epigenomic_similarity.html) | `./R-4/code/03A-celltype_epigenomic_similarity.Rmd` || Fig 8, Ext Fig 9 | Heatmaps of H3K27me2/3 in CRISPR experiments | `./code/07D-deeptools_*.sh` and `./code/07E-deeptools_*.sh` |
+| Ext Fig 8 | [Comparison of tumor epigenomes to scChIP of normal cell types](https://fungenomics.github.io/HGG-oncohistones/R-4/code/03A-celltype_epigenomic_similarity.html) | `./R-4/code/03A-celltype_epigenomic_similarity.Rmd` |
+| Fig 8, Ext Fig 9 | Heatmaps of H3K27me2/3 in CRISPR experiments | `./code/07D-deeptools_*.sh` and `./code/07E-deeptools_*.sh` |
 
 
 ### Palettes & custom plotting utilities
