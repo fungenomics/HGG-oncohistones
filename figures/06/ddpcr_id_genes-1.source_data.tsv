@@ -1,0 +1,17 @@
+Cell_line	CRISPR	Condition	Notes	Gene	fold	sd
+DIPG36	KO	ACVR1 KO	fold change compared to DIPG36_unedited, 1 biological replicate, 3 technical replicates	ID1	0.154537877	0.002755508
+DIPG36	KO	ACVR1 KO	fold change compared to DIPG36_unedited, 1 biological replicate, 3 technical replicates	ID2	0.08699286	0.002055814
+DIPG36	KO	ACVR1 KO	fold change compared to DIPG36_unedited, 1 biological replicate, 3 technical replicates	ID3	0.130279669	0.002415462
+DIPG36	KO	ACVR1 KO	fold change compared to DIPG36_unedited, 1 biological replicate, 3 technical replicates	ID4	0.59388657	0.018552899
+DIPG36	unedited	ACVR1 mutant	fold change compared to DIPG36_unedited, 1 biological replicate, 3 technical replicates	ID1	1	0.02169175
+DIPG36	unedited	ACVR1 mutant	fold change compared to DIPG36_unedited, 1 biological replicate, 3 technical replicates	ID2	1	0.024712001
+DIPG36	unedited	ACVR1 mutant	fold change compared to DIPG36_unedited, 1 biological replicate, 3 technical replicates	ID3	1	0.022081519
+DIPG36	unedited	ACVR1 mutant	fold change compared to DIPG36_unedited, 1 biological replicate, 3 technical replicates	ID4	1	0.038538737000000003
+DIPG4	KO	ACVR1 KO	fold change compared to DIPG4_unedited, 1 biological replicate, 3 technical replicates	ID1	0.626	0.005
+DIPG4	KO	ACVR1 KO	fold change compared to DIPG4_unedited, 1 biological replicate, 3 technical replicates	ID2	0.596	0.01
+DIPG4	KO	ACVR1 KO	fold change compared to DIPG4_unedited, 1 biological replicate, 3 technical replicates	ID3	0.150184201	0.002039257
+DIPG4	KO	ACVR1 KO	fold change compared to DIPG4_unedited, 1 biological replicate, 3 technical replicates	ID4	0.781841279	0.047189681
+DIPG4	unedited	ACVR1 mutant	fold change compared to DIPG4_unedited, 1 biological replicate, 3 technical replicates	ID1	1	0.008
+DIPG4	unedited	ACVR1 mutant	fold change compared to DIPG4_unedited, 1 biological replicate, 3 technical replicates	ID2	1	0.017
+DIPG4	unedited	ACVR1 mutant	fold change compared to DIPG4_unedited, 1 biological replicate, 3 technical replicates	ID3	1	0.010908723
+DIPG4	unedited	ACVR1 mutant	fold change compared to DIPG4_unedited, 1 biological replicate, 3 technical replicates	ID4	1	0.061320165
