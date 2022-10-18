@@ -235,15 +235,12 @@ the seed, and the R session info.
 ### Testing
 
 Lightweight testing is performed in certain cases (e.g. validating metadata)
-using the [ensurer](https://github.com/smbache/ensurer) package, combined with the
-[testrmd](https://github.com/rmflight/testrmd) testing framework for R Markdown documents.
+using the `[ensurer](https://github.com/smbache/ensurer)` package, combined with the
+`[testrmd](https://github.com/rmflight/testrmd)` testing framework for R Markdown documents.
 Certain reusable `ensurer` contracts (reusable tests) are stored in `./code/functions/testing.R`.
 
 
 ## GitHub / version control
-
-This directory is tracked with git and has an associated GitHub repository in the Kleinman
-lab account at https://github.com/fungenomics/HGG-oncohistones.
 
 The following are tracked / available on GitHub:
 
