@@ -242,6 +242,21 @@ save(data_chip_stats, file = glue("{out}/data_chip_stats.Rda"))
 ```
 
 
+Count samples:
+
+```{r count_samples}
+
+data_chip_tidy %>%
+    left_join(meta %>% distinct(ID_paper, Group), by = "ID_paper") %>%
+    distinct(ID_paper, Group, Mark) %>%
+    group_by(Group, Mark) %>%
+    count() %>% 
+    filter(Group %in% c("HGG-H3.1/2K27M-Pons",
+                        "HGG-H3.3K27M-Pons",
+                        "HGG-H3.3K27M-Thal."))
+
+```
+
 ## Scatterplot for H3.1 vs H3.3 pons
 
 Here, we'll combine the DGE data with each of different source of ChIP-seq analysis,
