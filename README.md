@@ -92,7 +92,7 @@ This table contains pointers to code for the key analyses associated with each f
 ### Palettes & custom plotting utilities
 
 Most color palettes (e.g. for tumor groups, genotypes, locations, cell types, HOX genes, etc) and ggplot2
-theme elements (`theme_min()`, `no_legend()`, `rotate_x()`, etc) are defined in `./include/style.R`.
+theme elements (`theme_min()`, `no_legend()`, `rotate_x()`, etc) are defined in [`include/style.R`](https://github.com/fungenomics/HGG-oncohistones/blob/master/include/style.R).
 
 
 ###  Tables
