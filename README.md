@@ -5,7 +5,7 @@
 - This is the **public** repository accompanying the HGG-oncohistones manuscript.
 - Link to repository: https://github.com/fungenomics/HGG-oncohistones and rendered version: https://fungenomics.github.io/HGG-oncohistones/
 - This repository is archived on [Zenodo](https://doi.org/10.5281/zenodo.6647837)
-- This repository contains **code only**, see the [Data availability](https://github.com/fungenomics/HGG-oncohistones#data-availability) section for links to data
+- This repository contains primarily **code**, with some figure source data, see the [Data availability](https://github.com/fungenomics/HGG-oncohistones#data-availability) section for links to data
 - Jump to the [Code to reproduce figures](https://github.com/fungenomics/HGG-oncohistones#code-to-reproduce-key-analyses) section for links to code and rendered HTMLs of each figure
 
 Contents:
@@ -34,11 +34,11 @@ Contents:
 - This repository is meant to enhance the Materials & Methods section by providing code for the custom
 analyses in the manuscript and the exact R dependencies, in order to improve reproducibility for the main results.
 However, it is not a fully executable workflow.
-- In general, alignment and initial QC of sequencing data has been performed using in-house pipelines, not included here.
+- In general, alignment and cell calling for tumor and normal brain sequencing data has been performed using in-house pipelines, not included here.
 This repository mainly contains custom/downstream code.
 - A first level of downstream analysis involves scripts applied in parallel to individual samples for specific data types.
 Copies of these scripts are provided in the `code/scripts/` and `R-4/code/scripts` folders (the execution of these scripts is perofrmed in the `data/scRNAseq`, `data/scATACseq`, `data/ChIPseq`, etc folders, not included here).
-- A second level of downstream analysis involves custom analyses, aggregating samples and data types, use to derive the main results. These are provided in .Rmd files in `code` and `R-4/code`, with the associated .md and rendered HTML files. The rendered HTML files can be viewed at https://fungenomics.github.io/HGG-oncohistones/ under the "Code to reproduce key analyses" section.
+- A second level of downstream analysis involves custom analyses, aggregating samples and data types, use to derive the main results included in the paper. These are provided in .Rmd files in `code` and `R-4/code`, with the associated .md and rendered HTML files. The rendered HTML files can be viewed at https://fungenomics.github.io/HGG-oncohistones/ under the ["Code to reproduce key analyses"](https://github.com/fungenomics/HGG-oncohistones#code-to-reproduce-key-analyses) section.
 
 ### Codebase structure
 
@@ -129,7 +129,7 @@ Supplementary tables (included with the manuscript) and processed data tables (o
 
 This section describes the scripts used for preprocessing of single-cell
 data from this project. That includes: sn/scRNAseq, scATACseq, and scMultiome
-(joint RNA & ATAC in the same cells). This document refers to sn and scRNAseq generally as 'scRNAseq'.
+(joint RNA & ATAC in the same cells). This document refers to **sn** and **sc**RNAseq generally as 'scRNAseq'.
 Please see the sample metadata for the technology used to profile each sample. Please see
 the Methods section of the manuscript for more details on the single-cell profiling.
 
@@ -216,10 +216,10 @@ for each R version.
 
 The `renv` package:
 
-1. maintains two isolated project-specific libraries in the `renv` folder (for R 3.6.1) or `R-4/renv` folder (for R 4.1.2),
+1. maintains two isolated project-specific libraries in the `renv` folder (for R 3.6.1) or `R-4/renv` folder (for R 4.1.2) - the libraries themselves are not on GitHub
 2. stores packages according to version
-3. records the R, Bioconductor, and package versions in the file `renv.lock` (and `R-4/renv.lock`), which
-can be used to reproduce the R package environment elsewhere
+3. records the R, Bioconductor, and package versions in the files [`renv.lock`](https://github.com/fungenomics/HGG-oncohistones/blob/master/renv.lock) and [`R-4/renv.lock`](https://github.com/fungenomics/HGG-oncohistones/blob/master/R-4/renv.lock), which
+can be used to reproduce the R package environment.
 
 The reason for using two different R versions is that certain analyses involving
 10X Multiome data require versions of Seurat/Signac dependent on R > 4.
@@ -227,7 +227,7 @@ The reason for using two different R versions is that certain analyses involving
 
 ### R Markdown
 
-Each markdown/HTML file has a "Reproducibility report" at the bottom, indicating
+Each markdown/HTML file has a "Reproducibility report" at the bottom ([example](https://fungenomics.github.io/HGG-oncohistones/code/02-bulk_comparisons.html#reproducibility)), indicating
 when the document was last rendered, the most recent git commit when it was rendered,
 the seed, and the R session info.
 
@@ -235,8 +235,8 @@ the seed, and the R session info.
 ### Testing
 
 Lightweight testing is performed in certain cases (e.g. validating metadata)
-using the `[ensurer](https://github.com/smbache/ensurer)` package, combined with the
-`[testrmd](https://github.com/rmflight/testrmd)` testing framework for R Markdown documents.
+using the [`ensurer`](https://github.com/smbache/ensurer) package, combined with the
+[`testrmd`](https://github.com/rmflight/testrmd) testing framework for R Markdown documents.
 Certain reusable `ensurer` contracts (reusable tests) are stored in `./code/functions/testing.R`.
 
 
@@ -244,17 +244,16 @@ Certain reusable `ensurer` contracts (reusable tests) are stored in `./code/func
 
 The following are tracked / available on GitHub:
 
-* `.Rmd` files, containing the code, and `.md` files, containing code and outputs
-* Certain output files (`tsv`/`Rda`/`Rds`), if they're small
-* The brief `desc` files for outputs
+* `.Rmd` files, containing the code, and `.md` and rendered HTML files, containing code and outputs
+* Figure source data, under `figures`, when sufficiently small
+* The brief `desc` files for outputs, under `outputs`
 * The lockfile produced by the `renv` package
 
 The following are not tracked / available on GitHub:
 
-* Figures in `png`/`pdf` format, and figure source data
-* Raw data and analysis output / processed data files
+* Figures in `png`/`pdf` format, and some figure source data
+* Raw data and analysis output / processed data files (but see the ["Data availability"](https://github.com/fungenomics/HGG-oncohistones#data-availability) section for links to data depositions)
 * The actual packages in the R library 
-
 
 
 ## Citation
