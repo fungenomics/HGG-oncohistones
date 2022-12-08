@@ -2,7 +2,7 @@
 
 # HGG-oncohistones analysis code
 
-- This is the **public** repository accompanying the HGG-oncohistones manuscript.
+- This is the **public** repository accompanying the study [**K27M in canonical and noncanonical H3 variants occurs in distinct oligodendroglial cell lineages in brain midline gliomas**](https://rdcu.be/c1cqi), Jessa*, Mohammadnia*, Harutyunyan*, ..., Jabado, Kleinman, _Nature Genetics_, 2022
 - Link to repository: https://github.com/fungenomics/HGG-oncohistones and rendered version: https://fungenomics.github.io/HGG-oncohistones/
 - This repository is archived on [Zenodo](https://doi.org/10.5281/zenodo.6647837)
 - This repository contains primarily **code**, with some figure source data, see the [Data availability](https://github.com/fungenomics/HGG-oncohistones#data-availability) section for links to data
@@ -10,7 +10,7 @@
 
 Contents:
 * [Contents of the repository](https://github.com/fungenomics/HGG-oncohistones#contents-of-this-repository)
-    * [Codebase organization](https://github.com/fungenomics/HGG-oncohistones#codebase-overview)
+    * [Codebase overview](https://github.com/fungenomics/HGG-oncohistones#codebase-overview)
     * [Codebase structure](https://github.com/fungenomics/HGG-oncohistones#codebase-structure)
 * [Materials for the manuscript](https://github.com/fungenomics/HGG-oncohistones#materials-for-the-manuscript)
      * [Links to code to reproduce figures/main results](https://github.com/fungenomics/HGG-oncohistones#code-to-reproduce-key-analyses)
@@ -34,7 +34,7 @@ Contents:
 - This repository is meant to enhance the Materials & Methods section by providing code for the custom
 analyses in the manuscript and the exact R dependencies, in order to improve reproducibility for the main results.
 However, it is not a fully executable workflow.
-- In general, alignment and cell calling for tumor and normal brain sequencing data has been performed using in-house pipelines, not included here.
+- In general, read alignment and cell calling for tumor and normal brain single-cell sequencing data has been performed using in-house pipelines, not included here.
 This repository mainly contains custom/downstream code.
 - A first level of downstream analysis involves scripts applied in parallel to individual samples for specific data types.
 Copies of these scripts are provided in the `code/scripts/` and `R-4/code/scripts` folders (the execution of these scripts is perofrmed in the `data/scRNAseq`, `data/scATACseq`, `data/ChIPseq`, etc folders, not included here).
@@ -44,7 +44,7 @@ Copies of these scripts are provided in the `code/scripts/` and `R-4/code/script
 
 Brief explanation of the directory structure:
 
-* `renv` --> renv-managed folder for R 3.6
+* `renv` --> [renv](https://rstudio.github.io/renv/articles/renv.html)-managed folder for R 3.6
 * `renv.lock` --> lockfile containing all package versions for R 3.6 analysis
 * `code` --> code for R 3.6 analysis, contains the .Rmd files that run the high-level analyses and produce figures included in the paper
    * `functions` --> contains .R files with custom functions used throughout the analysis
@@ -97,7 +97,7 @@ theme elements (`theme_min()`, `no_legend()`, `rotate_x()`, etc) are defined in 
 
 ###  Tables
 
-Supplementary tables (included with the manuscript) and processed data tables (on [Zenodo](https://doi.org/10.5281/zenodo.6773261)) were assembled from the following input/output/figure source data files. (Only tables produced with the code included here are listed below.)
+[Supplementary tables](https://www.nature.com/articles/s41588-022-01205-w#Sec56) (included with the manuscript) and processed data tables (on [Zenodo](https://doi.org/10.5281/zenodo.6773261)) were assembled from the following input/output/figure source data files. (Only tables produced with the code included here are listed below.)
 
 | Supplementary table | Path |
 | ----- | ---- |
@@ -131,7 +131,7 @@ This section describes the scripts used for preprocessing of single-cell
 data from this project. That includes: sn/scRNAseq, scATACseq, and scMultiome
 (joint RNA & ATAC in the same cells). This document refers to **sn** and **sc**RNAseq generally as 'scRNAseq'.
 Please see the sample metadata for the technology used to profile each sample. Please see
-the Methods section of the manuscript for more details on the single-cell profiling.
+the [Methods](https://www.nature.com/articles/s41588-022-01205-w#Sec9) section of the manuscript for more details on the single-cell profiling.
 
 
 ### Single-cell RNAseq data
