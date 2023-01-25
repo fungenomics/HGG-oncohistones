@@ -77,6 +77,7 @@ This table contains pointers to code for the key analyses associated with each f
 | Ext Fig 1 | [Summary figures for extended mouse brain scRNAseq atlas](https://fungenomics.github.io/HGG-oncohistones/05-mouse_atlas.html) | `./code/05-mouse_atlas.Rmd` |
 | Fig 1, Ext Fig 2 | [cNMF analysis of variable gene programs](https://fungenomics.github.io/HGG-oncohistones/R-4/code/01-cNMF_programs.html) | `./R-4/code/01-cNMF_programs.Rmd` |
 | Fig 1 | [Cell type identity in tumors with automated consensus projections](https://fungenomics.github.io/HGG-oncohistones/R-4/code/02-consensus_projections.html) | `./R-4/code/02-consensus_projections.Rmd` |
+| Ext Fig 2 | Analysis of human fetal [thalamus](https://fungenomics.github.io/HGG-oncohistones/code/01A-human_thalamus.html) and [hindbrain](https://fungenomics.github.io/HGG-oncohistones/code/01B-human_hindbrain.html) scRNAseq data | `./code/01A-human_thalamus.{Rmd,html}` and `./code/01B-human_hindbrain.{Rmd,html}` |
 | Ext Fig 2 | [Validation of cell type projections using human thalamic fetal brain reference](https://fungenomics.github.io/HGG-oncohistones/R-4/code/02-consensus_projections.html) | `./R-4/code/02-consensus_projections.Rmd` |
 | Ext Fig 3 | [Characterization of malignant ependymal cells](https://fungenomics.github.io/HGG-oncohistones/code/01C-ependymal_cells.html) | `./code/01C-ependymal_cells.Rmd` |
 | Fig 2, 4 | [Scatterplots for RNAseq/K27ac/K27me3 between H3K27M tumor subtypes](https://fungenomics.github.io/HGG-oncohistones/code/02-bulk_comparisons.html) | `./code/02-bulk_comparisons.Rmd` |
