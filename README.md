@@ -102,9 +102,6 @@ theme elements (`theme_min()`, `no_legend()`, `rotate_x()`, etc) are defined in 
 
 | Supplementary table | Path |
 | ----- | ---- |
-| 3 | `./output/00/TABLE_scRNAseq_QC.tsv` |
-| 4 | `./output/00/TABLE_scATACseq_QC.tsv` |
-| 5 | `./output/00/TABLE_scMultiome_QC.tsv` |
 | 6 | `./output/05/TABLE_mouse_sample_info.tsv` |
 | 7 | `./output/05/TABLE_mouse_cluster_info.tsv` |
 | 8 | `./R-4/output/02/TABLE_cNMF_programs_per_sample.tsv` |
