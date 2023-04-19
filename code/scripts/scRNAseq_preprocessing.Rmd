@@ -23,6 +23,7 @@ Load libraries and functions:
 ```{r load_libraries, cache = FALSE, message = FALSE, warning = FALSE}
 
 # libraries from CRAN
+library(here)
 library(dplyr)
 library(tidyr)
 library(readr)
