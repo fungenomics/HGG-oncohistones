@@ -37,7 +37,7 @@ library(cowplot)
 library(Seurat)
 
 # custom functions
-source(file.path(params$assets, "resources", "functions.R"))
+source(here("code/functions/functions_scRNAseq_preprocessing.R"))
 
 ```
 

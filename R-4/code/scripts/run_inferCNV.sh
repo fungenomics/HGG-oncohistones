@@ -8,10 +8,9 @@
 #SBATCH --mem=30G
 #SBATCH --cpus-per-task=4
 
-module load nixpkgs/16.09
-module load gcc/7.3.0
-module load r/4.0.0
-export R_LIBS_USER="../../../../../renv/library/R-4.0/x86_64-pc-linux-gnu"
+module load StdEnv/2020
+module load r/4.1.2
+export R_LIBS_USER="../../../../../renv/library/R-4.1/x86_64-pc-linux-gnu"
 
 # Run script to call CNVs and generate custom heatmap
-Rscript ../../../../../../code/scripts/inferCNV.R
+Rscript ../../../../../code/scripts/inferCNV.R
