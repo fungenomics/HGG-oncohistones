@@ -180,6 +180,18 @@ columns matching the analyses used in the paper:
 The cell annotations/metadata are included in [processed data deposition on Zenodo](https://doi.org/10.5281/zenodo.6773261) and on GEO ([GSE210568](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE210568)).
 
 
+
+### Data integration
+
+As described in the Methods, we used the harmony package for integration of single-cell datasets.
+
+- Samples within each subgroup were integrated, using "Sample" and "Technology" as the batch variables
+- Only malignant cells were used, and only the RNA modality was used for integration
+- The general script used for integration is at [`code/scripts/integrate_harmony.R`](https://github.com/fungenomics/HGG-oncohistones/blob/3b97c31859518ea40f2ed73101279dd2f59052b3/code/scripts/integrate_harmony.R),
+which expects a config file `info.experiment.tsv` to be present (example at [`code/infos_templates/harmony.info.experiment.tsv`](https://github.com/fungenomics/HGG-oncohistones/blob/master/code/infos_templates/harmony.info.experiment.tsv))
+- Integrations were performed at [`R-4/data/integrations`](https://github.com/fungenomics/HGG-oncohistones/tree/master/R-4/data/integrations), with one directory for each group of samples being integrated, and the config files within
+
+
 ### Human fetal brain scRNAseq data
 
 Human fetal data brain data for the hindbrain and thalamus were obtained from two
