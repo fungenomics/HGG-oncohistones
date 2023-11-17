@@ -50,6 +50,7 @@ Brief explanation of the directory structure:
    * `functions` --> contains .R files with custom functions used throughout the analysis
    * `scripts` --> contains .R and bash scripts for analyses that are repeated on individual samples, as well as helper scripts e.g. for creating references
    * `infos_templates` --> contains example config files for scripts in the `scripts` folder
+   * `seurat_v3_resources` --> this is a copy of the folder referenced by `SEURAT_V3_ASSETS` in certain bash scripts, or `file.path(params$assets, "resources")` in the various `preprocessing_*.Rmd` scripts. It contains resources used for single-cell preprocessing.
 * `R-4` --> code for R 4.1 analysis (has a similar directory structure as the above main directory)
    * `code` --> contains .Rmd files, functions, and scripts for R 4.1 analysis
    * `renv` --> renv-managed folder for R 4.1
