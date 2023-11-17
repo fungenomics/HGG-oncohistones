@@ -21,6 +21,7 @@ Contents:
      * [scATAC](https://github.com/fungenomics/HGG-oncohistones#single-cell-atacseq-data)
      * [scMultiome](https://github.com/fungenomics/HGG-oncohistones#single-cell-multiome-data)
      * [Cell annotations matching the paper](https://github.com/fungenomics/HGG-oncohistones#cell-annotations-matching-the-paper)
+     * [Data integration](https://github.com/fungenomics/HGG-oncohistones/blob/master/README.md#data-integration)
 * [Re-analysis of human fetal brain scRNAseq data](https://github.com/fungenomics/HGG-oncohistones#human-fetal-brain-scrnaseq-data)
 * [Data availability](https://github.com/fungenomics/HGG-oncohistones#data-availability)
 * [Notes for reproducibility](https://github.com/fungenomics/HGG-oncohistones#notes-for-reproducibility)
