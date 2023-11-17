@@ -1,0 +1,20 @@
+Path	Sample	Molecular	GrowthFactorReceptor	Location	Technology	Color
+/path/to/P-1775_S-1775/seurat.Rda	P-1775_S-1775	H3.3K27M	PDGFRA mut&amp	Pons	10X Single Nuclei 3'	#D9DE5B
+/path/to/P-1764_S-1766/seurat.Rda	P-1764_S-1766	H3.3K27M	PDGFRA mut&amp	Pons	10X Single Nuclei 3'	#F8F861
+/path/to/P-6519_S-9084/seurat.Rda	P-6519_S-9084	H3.3K27M	None	Pons	10X Single Cell 3'	#A1CE4B
+/path/to/P-3407_S-3447/seurat.Rda	P-3407_S-3447	H3.3K27M	None	Pons	10X Single Nuclei 3'	#637F58
+/path/to/P-6337_S-8821/seurat.Rda	P-6337_S-8821	H3.3K27M	None	Pons	10X Single Cell 3'	#685F6D
+/path/to/P-4198_S-4459/seurat.Rda	P-4198_S-4459	H3.3K27M	None	Pons	10X Single Nuclei 3'	#866CAA
+/path/to/P-6117_S-8370/seurat.Rda	P-6117_S-8370	H3.3K27M	BRAF-V600E	Thal.	10X Single Cell 3'	#A2ACD3
+/path/to/P-4504_S-4916/seurat.Rda	P-4504_S-4916	H3.3K27M	None	Thal.	10X Single Nuclei 3'	#E6C5D5
+/path/to/P-6640_S-9581/seurat.Rda	P-6640_S-9581	H3.3K27M	None	Thal.	10X Single Cell 3'	#C0C2CE
+/path/to/P-6328_S-8672/seurat.Rda	P-6328_S-8672	H3.3K27M	None	Thal.	10X Single Nuclei 3'	#99BEC7
+/path/to/P-1569_S-1569/seurat.Rda	P-1569_S-1569	H3.3K27M	None	Cortex	10X Single Nuclei 3'	#56A18A
+/path/to/P-1694_S-1694/seurat.Rda	P-1694_S-1694	H3.3K27M	None	Pons	10X Multiome	red
+/path/to/P-1701_S-1701/seurat.Rda	P-1701_S-1701	H3.3K27M	ACVR1-R026H	Pons	10X Multiome	red
+/path/to/P-1709_S-1709/seurat.Rda	P-1709_S-1709	H3.3K27M	None	Pons	10X Multiome	red
+/path/to/P-1764_S-1766/seurat.Rda	P-1764_S-1766	H3.3K27M	PDGFRA mut	Pons	10X Multiome	red
+/path/to/P-1779_S-1781/seurat.Rda	P-1779_S-1781	H3.3K27M	None	Pons	10X Multiome	red
+/path/to/P-6337_S-8821/seurat.Rda	P-6337_S-8821	H3.3K27M	None	Pons	10X Multiome	red
+/path/to/P-6640_S-9581/seurat.Rda	P-6640_S-9581	H3.3K27M	None	Thal.	10X Multiome	red
+/path/to/P-6774_S-10146/seurat.Rda	P-6774_S-10146	H3.3K27M	None	Pons	10X Multiome	red

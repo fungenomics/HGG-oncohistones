@@ -1,0 +1,27 @@
+Covariate	Levels	Color
+Molecular	EZHIP	#bbf7e8
+Molecular	H3.1K27M	orange
+Molecular	H3.2K27M	lightpink
+Molecular	H3.3K27M	red
+Molecular	H3.3G34R	turquoise3
+Molecular	H3.3G34V	turquoise4
+Molecular	H3.3G34R/V	turquoise4
+Molecular	H3WT	gray50
+Molecular	WT	gray50
+GrowthFactorReceptor	ACVR1-G328E	firebrick3
+GrowthFactorReceptor	ACVR1-G328V	firebrick1
+GrowthFactorReceptor	PDGFRA mut	darkorchid3
+GrowthFactorReceptor	PDGFRA mut&amp	darkorchid4
+GrowthFactorReceptor	PDGFRA-FIP1L1	darkorchid1
+GrowthFactorReceptor	EGFR-L62R	darksalmon
+GrowthFactorReceptor	BRAF-V600E	deeppink4
+GrowthFactorReceptor	None	gray90
+Location	PF	#f7cebb
+Location	4V	goldenrod3
+Location	Pons	gold1
+Location	Thal.	darkolivegreen4
+Location	Spinal	darkred
+Location	Cortex	dodgerblue2
+Technology	10X Single Nuclei 3'	gray70
+Technology	10X Single Cell 3'	gray40
+Technology	10X Multiome	cadetblue3

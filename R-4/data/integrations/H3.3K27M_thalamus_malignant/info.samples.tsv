@@ -1,0 +1,6 @@
+Path	Sample	Molecular	GrowthFactorReceptor	Location	Technology	Color
+/path/to/P-6117_S-8370/seurat.Rda	P-6117_S-8370	H3.3K27M	BRAF-V600E	Thal.	10X Single Cell 3'	#A2ACD3
+/path/to/P-4504_S-4916/seurat.Rda	P-4504_S-4916	H3.3K27M	None	Thal.	10X Single Nuclei 3'	#E6C5D5
+/path/to/P-6640_S-9581/seurat.Rda	P-6640_S-9581	H3.3K27M	None	Thal.	10X Single Cell 3'	#C0C2CE
+/path/to/P-6328_S-8672/seurat.Rda	P-6328_S-8672	H3.3K27M	None	Thal.	10X Single Nuclei 3'	#99BEC7
+/path/to/P-6640_S-9581/seurat.Rda	P-6640_S-9581	H3.3K27M	None	Thal.	10X Multiome	red

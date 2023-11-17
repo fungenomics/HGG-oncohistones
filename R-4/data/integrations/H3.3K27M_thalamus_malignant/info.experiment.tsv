@@ -1,0 +1,9 @@
+param	value
+vars_integrate	Sample,Technology
+filters	NA
+verbose	FALSE
+assay	RNA
+n_pcs	30
+integrate	TRUE
+malignant_only	TRUE
+vars_drop	cNMF_program_all_1,cNMF_program_all_2,cNMF_program_all_3,cNMF_program_all_4,cNMF_program_all_5,cNMF_program_all_6,cNMF_program_all_7,cNMF_program_all_8,cNMF_program_all_10,cNMF_program_malignant_1,cNMF_program_malignant_2,cNMF_program_malignant_3,cNMF_program_malignant_4,cNMF_program_malignant_5,cNMF_program_malignant_6,cNMF_program_malignant_7,cNMF_program_malignant_8

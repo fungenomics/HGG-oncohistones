@@ -1,0 +1,10 @@
+Path	Sample	Molecular	GrowthFactorReceptor	Location	Technology	Color
+/path/to/P-6254_S-8499/seurat.Rda	P-6254_S-8499	H3.1K27M	ACVR1-G328E	Pons	10X Single Nuclei 3'	#EA7147
+/path/to/P-6251_S-8496/seurat.Rda	P-6251_S-8496	H3.1K27M	ACVR1-G328E	Pons	10X Single Nuclei 3'	#E75E50
+/path/to/P-6253_S-8498/seurat.Rda	P-6253_S-8498	H3.1K27M	ACVR1-G328E	Pons	10X Single Nuclei 3'	#E34B59
+/path/to/P-1713_S-1713/seurat.Rda	P-1713_S-1713	H3.1K27M	ACVR1-G328E	Pons	10X Single Nuclei 3'	#CD4C59
+/path/to/P-1741_S-2756/seurat.Rda	P-1741_S-2756	H3.1K27M	ACVR1-G328V	Pons	10X Single Nuclei 3'	#AA5A51
+/path/to/P-6255_S-8500/seurat.Rda	P-6255_S-8500	H3.1K27M	None	Pons	10X Single Nuclei 3'	#839848
+/path/to/P-2687_S-2688/seurat.Rda	P-2687_S-2688	H3.2K27M	ACVR1-G328V	Pons	10X Single Nuclei 3'	#AEBB52
+/path/to/P-6253_S-8498/seurat.Rda	P-6253_S-8498	H3.1K27M	ACVR1-G328E	Pons	10X Multiome	red
+/path/to/P-1780_S-1780/seurat.Rda	P-1780_S-1780	H3.1K27M	None	Pons	10X Multiome	blue
